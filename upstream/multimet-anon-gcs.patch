@@ -1,0 +1,35 @@
+diff --git a/googlehydrology/datasetzoo/multimet.py b/googlehydrology/datasetzoo/multimet.py
+index f6081ad..fdef3b8 100644
+--- a/googlehydrology/datasetzoo/multimet.py
++++ b/googlehydrology/datasetzoo/multimet.py
+@@ -16,6 +16,7 @@ import functools
+ import itertools
+ import logging
+ import math
++import os
+ import pickle
+ import subprocess
+ import sys
+@@ -1056,7 +1057,21 @@ def _convert_to_tensor(
+ @functools.cache
+ def _open_zarr(path: Path) -> xr.Dataset:
+     path = path.as_posix().replace('gs:/', 'gs://')
+-    return xr.open_zarr(store=path, chunks='auto', decode_timedelta=True)
++    storage_options = None
++    if path.startswith('gs://'):
++        # LOCAL PATCH (HLB 2026-08-11): the Caravan-MultiMet bucket is public, so
++        # read it anonymously by default. Relying on application-default credentials
++        # made runs fail with `invalid_grant` once the cached refresh token expired,
++        # and it would force anyone reproducing this work to hold a Google account.
++        # Override with GOOGLEHYDROLOGY_GCS_TOKEN (e.g. 'google_default') if a
++        # private bucket is ever needed.
++        storage_options = {'token': os.environ.get('GOOGLEHYDROLOGY_GCS_TOKEN', 'anon')}
++    return xr.open_zarr(
++        store=path,
++        chunks='auto',
++        decode_timedelta=True,
++        storage_options=storage_options,
++    )
+ 
+ 
+ def _get_products_and_bands_from_feature_strings(

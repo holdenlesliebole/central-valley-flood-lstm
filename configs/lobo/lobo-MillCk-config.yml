@@ -1,0 +1,159 @@
+# LEAVE-ONE-BASIN-OUT (task 5, HLB 2026-08-13): train on 27 basins, test on the
+# fully held-out MillCk. Answers the ungauged-basin/regionalization question.
+# 15 epochs (not 25) to fit 5 runs in one overnight window; each run is
+# independently checkpointed so partial completion is still usable.
+# CAPACITY EXPERIMENT (HLB 2026-08-12): hidden_size 16 -> 128.
+# At h=16 the CMAL head was capacity-starved: it must parameterize 12 numbers
+# per timestep (3 components x 4 params) vs 1 for regression, and the Klotz et al.
+# settings it inherits assume h=512. Both heads are raised together so the
+# deterministic-vs-CMAL comparison stays controlled. LR drop stretched 3->5 epochs
+# to suit the longer 25-epoch schedule.
+# Central Valley / Sierra CA-subset training config.
+# Adapted from tutorial/configs/train-config.yml for the 5 California Sierra
+# basins, using the locally-staged Caravan-nc (~/data/caravan-nc) for targets +
+# statics and streaming MultiMet forcing from GCS. See
+# Job_Search/portfolio/central_valley_hydrology.md.
+# NOTE: epochs=2 here is a SMOKE TEST to validate the training loop on MPS.
+# Bump epochs (~20-30) for the real model once this runs clean.
+
+experiment_name: lobo-MillCk
+run_dir: ~/Documents/Side_projects/Hydrology/runs/
+logging_level: INFO
+detect_anomaly: False
+print_warnings_once: False
+
+# --- Data ---
+dataset: multimet
+train_basin_file: /Users/holden/Documents/Side_projects/Hydrology/configs/lobo/train_MillCk.txt
+validation_basin_file: /Users/holden/Documents/Side_projects/Hydrology/configs/lobo/train_MillCk.txt
+test_basin_file: /Users/holden/Documents/Side_projects/Hydrology/configs/lobo/test_MillCk.txt
+targets_data_dir: ~/data/caravan-nc-extended
+statics_data_dir: ~/data/caravan-nc-extended
+dynamics_data_dir: gs://caravan-multimet/v1.1
+load_as_csv: False
+
+# Caravan streamflow for these basins runs 1951..2023-12-30.
+train_start_date:
+- 01/01/1985
+- 01/01/2012
+- 01/10/2017
+- 01/10/2023
+train_end_date:
+- 31/12/2008
+- 30/09/2016
+- 30/09/2022
+- 31/10/2024
+validation_start_date: 01/01/2009
+validation_end_date: 31/12/2011
+test_start_date:
+- 01/10/2016
+- 01/10/2022
+test_end_date:
+- 30/09/2017
+- 30/09/2023
+
+hindcast_inputs:
+  hres:
+    - hres_temperature_2m
+    - hres_total_precipitation
+  imerg:
+    - imerg_precipitation
+  cpc:
+    - cpc_precipitation
+forecast_inputs:
+  hres:
+    - hres_temperature_2m
+    - hres_total_precipitation
+  graphcast:
+    - graphcast_temperature_2m
+    - graphcast_total_precipitation
+union_mapping:
+  cpc_precipitation: era5land_total_precipitation
+  imerg_precipitation: era5land_total_precipitation
+  graphcast_temperature_2m: era5land_temperature_2m
+  graphcast_total_precipitation: era5land_total_precipitation
+  hres_temperature_2m: era5land_temperature_2m
+  hres_total_precipitation: era5land_total_precipitation
+static_attributes:
+- area
+- aridity_ERA5_LAND
+- aridity_FAO_PM
+- frac_snow
+- moisture_index_ERA5_LAND
+- moisture_index_FAO_PM
+- p_mean
+- pet_mean_ERA5_LAND
+- pet_mean_FAO_PM
+target_variables:
+- streamflow
+
+# --- Model ---
+model: mean_embedding_forecast_lstm
+hidden_size: 128
+head: regression
+output_activation: linear
+seq_length: 365
+lead_time: 7
+forecast_overlap: 365
+timestep_counter: True
+output_dropout: 0.4
+initial_forget_bias: 3
+weight_init_opts:
+- lstm-ih-xavier
+- lstm-hh-orthogonal
+- fc-xavier
+statics_embedding:
+  type: fc
+  hiddens: [100, 100, 20]
+  activation: [tanh, tanh, linear]
+  dropout: 0.0
+hindcast_embedding:
+  type: fc
+  hiddens: [100, 20]
+  activation: [tanh, linear]
+  dropout: 0.0
+forecast_embedding:
+  type: fc
+  hiddens: [20, 20, 20, 20]
+  activation: [tanh, tanh, tanh, linear]
+  dropout: 0.0
+
+# --- Training ---
+device: mps
+seed: 42
+loss: MSE
+optimizer: Adam
+epochs: 15
+batch_size: 256
+max_updates_per_epoch: -1
+learning_rate_strategy: StepLR
+initial_learning_rate: 0.001
+learning_rate_drop_factor: 0.5
+learning_rate_epochs_drop: 5
+clip_gradient_norm: 1
+target_noise_std: 0.005
+
+# --- Validation / Eval ---
+metrics:
+- NSE
+- KGE
+- FHV
+- Peak-Timing
+- Missed-Peaks
+- Peak-MAPE
+validate_every: 1
+validate_n_random_basins: -1
+tester_skip_obs_all_nan: True
+tester_sample_reduction: median
+clip_targets_to_zero:
+- streamflow
+predict_last_n: 8
+allzero_samples_are_invalid: False
+
+# --- System ---
+num_workers: 0
+log_loss_every_nth_update: 50
+log_n_figures: 0
+cache:
+  enabled: True
+  byte_limit: 10000000000

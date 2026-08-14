@@ -1,0 +1,15 @@
+# Trained runs and model outputs (multi-GB; reproduce via configs/ + METHODS.md)
+runs/
+
+# Vendored upstream clone -- reconstructed by upstream/setup_upstream.sh
+central_valley_floodforecasting/
+
+# Data stores live outside the repo (~/data/); nothing large belongs here
+*.zarr
+*.nc
+*.pt
+
+__pycache__/
+*.pyc
+.DS_Store
+*.bak

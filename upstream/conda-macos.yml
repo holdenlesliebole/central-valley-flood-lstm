@@ -1,0 +1,47 @@
+# macOS (Apple Silicon / arm64) adaptation of conda.yml.
+# Upstream conda.yml pins CUDA (cuda-toolkit, cuda-version, pytorch-cuda) which
+# does not exist on osx-arm64. Removed those + the nvidia channel; PyTorch 2.5.1
+# resolves to the CPU/MPS build on Mac. Everything else is identical.
+# Install: conda env create -f environments/conda-macos.yml
+name: googlehydrology
+channels:  # Keep order
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - absl-py=2.3.*
+  - bokeh=3.8.1
+  - cachey=0.2.1
+  - dask=2025.12.0
+  - gcsfs=2025.12.*
+  - geopandas=1.1.*
+  - gh
+  - h5netcdf=1.7.3
+  - h5py=3.15.1  # Sets the underlying C library "hdf5", letting h5py set it.
+  - ipython
+  - jupyter
+  - matplotlib=3.10.*
+  - more-itertools=10.8.*
+  - nbsphinx=0.9.8
+  - netcdf4=1.7.3
+  - numpy=2.4.*
+  - pandas=2.3.*
+  - parso=0.8.5
+  - pydantic=2.12.*
+  - pytest
+  - pytest-cov
+  - pytest-xdist
+  - python=3.12.*
+  - pytorch=2.5.1
+  - ruamel.yaml=0.18.17
+  - ruff
+  - scipy=1.16.*
+  - seaborn
+  - sphinx=8.2.3
+  - sphinx-rtd-theme=3.0.2
+  - tensorboard=2.20.*
+  - torchaudio=2.5.1
+  - torchvision=0.20.1
+  - tqdm=4.67.*
+  - xarray=2025.12.0
+  - zarr=3.1.5
