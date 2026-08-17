@@ -8,7 +8,7 @@ import numpy as np, pandas as pd, xarray as xr
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-rd = sorted(glob.glob(os.path.expanduser('~/Documents/Hydrology/runs/ca-28basin_*')))[-1]
+rd = sorted(glob.glob(os.path.expanduser('~/Documents/Side_projects/Hydrology/runs/ca-28basin_*')))[-1]
 z = os.path.join(rd, 'test', 'model_epoch015', 'test_results.zarr')
 ds = xr.open_zarr(z).squeeze('freq')
 figdir = os.path.join(rd, 'figures'); os.makedirs(figdir, exist_ok=True)

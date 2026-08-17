@@ -257,10 +257,32 @@ def persistence_by_lead(files: list[str], max_lead: int = 7) -> pd.DataFrame:
         q.index = pd.to_datetime(q.index)
         full = q.loc[: TEST[1]]
         obs = select_periods(q, TEST_PERIODS).to_numpy()
-        row = {'basin': basin, 'name': FOCUS.get(basin, '')}
+        idx = select_periods(q, TEST_PERIODS).index
+
+        # Damped persistence at lead k: climatology + alpha^k * lag-k anomaly
+        # (the k-step AR(1) forecast). Fit alpha on TRAIN anomalies, as in main().
+        train = select_periods(q, TRAIN_PERIODS)
+        clim_sm = day_of_year_climatology(train.dropna(), SMOOTH_WINDOW)
+        tr_clim = climatology_on_index(clim_sm, train.index)
+        anom = train.to_numpy() - tr_clim
+        a0, a1 = anom[:-1], anom[1:]
+        m = ~np.isnan(a0) & ~np.isnan(a1)
+        alpha = float(np.corrcoef(a0[m], a1[m])[0, 1]) if m.sum() > 10 else 0.0
+        alpha = float(np.clip(alpha, 0.0, 1.0)) if np.isfinite(alpha) else 0.0
+        sim_clim = climatology_on_index(clim_sm, idx)
+
+        row = {'basin': basin, 'name': FOCUS.get(basin, ''), 'alpha': alpha}
         for lead in range(1, max_lead + 1):
             sim = select_periods(full.shift(lead), TEST_PERIODS).to_numpy()
             row[str(lead)], _ = score(obs, sim)
+            prev = select_periods(full.shift(lead), TEST_PERIODS).to_numpy()
+            prev_clim = climatology_on_index(
+                clim_sm, idx - pd.Timedelta(days=lead)
+            )
+            damped = np.clip(
+                sim_clim + alpha ** lead * (prev - prev_clim), 0, None
+            )
+            row[f'damped_{lead}'], _ = score(obs, damped)
         rows.append(row)
     return pd.DataFrame(rows)
 

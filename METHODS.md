@@ -1,9 +1,8 @@
 # Central Valley flood-forecasting LSTM — methods, results, and traps
 
-**Last updated 2026-08-14.** This is the reproducibility and methodology record for the
-code in this repo. The portfolio-facing summary lives in
-`~/Documents/Job_Search/portfolio/central_valley_hydrology.md`; results here and there
-must not drift.
+**Last updated 2026-08-17.** This is the reproducibility and methodology record for the
+code in this repo; the public-facing summary is the site writeup, which must not drift
+from the numbers here. Paths in this file are machine-specific.
 
 Upstream is Google Research's open flood-forecasting framework (package
 `googlehydrology`, forked from NeuralHydrology, vendored in
@@ -147,14 +146,17 @@ observations from the source netCDFs, time_step 0, framework metric functions, a
 **fixed 22-basin cohort** (of 28 trained, 6 have no flood-window observations — see
 trap §5.8: the earlier `run evaluate` numbers silently used a 16-basin cohort).
 Flood-split test = WY2017 + WY2023, each model at its best-validation checkpoint.
+NSE/KGE are pooled over both windows; peak metrics are computed per window and
+averaged, so the seam between disjoint windows cannot register as an event
+(2026-08-17; the earlier concatenated values differed by ≤0.12 in Missed-Peaks).
 
 | Run | h | best ep | test NSE | KGE | FHV | Missed-Pk | Peak-MAPE | focus-5 NSE |
 |---|---|---|---|---|---|---|---|---|
 | Determ., original split¹ | 16 | 15 | **0.836**¹ | — | — | — | — | 0.841¹ |
-| Determ., flood split | 16 | 15 | 0.679 | 0.765 | −13.7% | 0.388 | 48.7% | 0.816 |
-| CMAL, flood split | 16 | 2 | 0.517 | 0.411 | −60.4% | 0.690 | 69.1% | 0.425 |
-| Determ., flood split | 128 | 14 | 0.754 | **0.776** | −18.4% | 0.472 | 48.5% | 0.819 |
-| **CMAL, flood split** | **128** | **16** | **0.784** | 0.729 | −19.7% | **0.402** | **46.9%** | **0.824** |
+| Determ., flood split | 16 | 15 | 0.679 | 0.765 | −12.2% | 0.333 | 48.1% | 0.816 |
+| CMAL, flood split | 16 | 2 | 0.517 | 0.411 | −60.4% | 0.667 | 70.1% | 0.425 |
+| Determ., flood split | 128 | 14 | 0.754 | **0.776** | −18.6% | 0.450 | 47.6% | 0.819 |
+| **CMAL, flood split** | **128** | **16** | **0.784** | 0.729 | −20.9% | **0.333** | **42.4%** | **0.824** |
 
 ¹ 2012–2014 drought window, same 22-basin cohort (its own window has 26 scoreable
 basins; median there 0.808 — the cohort restriction is what moves it to 0.836).
@@ -165,8 +167,11 @@ basins; median there 0.808 — the cohort restriction is what moves it to 0.836)
   identical basins. Peak *timing* is good (~1 day) but magnitude is not (FHV ≈ −18%,
   ~47% of peaks missed): **the model gets *when*, not *how big*.**
 - **Capacity buys average accuracy and costs peak accuracy.** Deterministic h16→h128
-  improved NSE 0.679→0.754 but worsened FHV (−13.7%→−18.4%) and Missed-Peaks
-  (0.388→0.472) — consistent with regression-to-the-mean on OOD extremes.
+  improved NSE 0.679→0.754 but worsened FHV (−12.2%→−18.6%) and Missed-Peaks
+  (0.333→0.450) — consistent with regression-to-the-mean on OOD extremes.
+  Single-seed caveat: each configuration is one training run; LSTM results move
+  ±0.01–0.03 NSE across seeds, so treat the capacity-vs-peaks gradient as
+  consistent-with, not established-by, this experiment.
 
 **The CMAL story was a capacity artifact, twice over.** At h=16 CMAL looked far worse
 and looked like it was overfitting; it was **under-capacity** (12 output params per
@@ -174,7 +179,8 @@ timestep vs 1, with settings copied from a `hidden_size: 512` reference config).
 h=128 CMAL **beats the deterministic model on NSE (0.784 vs 0.754), missed peaks, and
 peak-magnitude error, at the cost of KGE** — and it provides predictive intervals the
 deterministic model cannot. Its metric-level bootstrap std is ≤0.001 NSE
-(`make_cmal_point_metrics.py`), so these differences are real, not sampling noise.
+(`make_cmal_point_metrics.py`), so the differences are not ensemble-sampling
+noise; both models are single training runs, so seed-level variance is not excluded.
 
 ### 4.1b Ungauged transfer — leave-one-basin-out (2026-08-13)
 
@@ -215,9 +221,10 @@ from a clean evaluation's 0.729–0.770 — contamination, not noise. Use the §
 
 ### 4.1d Probabilistic scoring (2026-08-13) — `make_probabilistic_scores.py`
 
-The project's stated differentiator, finally built. Necessary rather than optional: after
-§4.1c the two models are statistically tied on point metrics, so this is the only thing
-that can separate them.
+The project's stated differentiator. (An earlier draft argued the two heads were
+statistically tied on point metrics; that reading traced to the §5.2 scoring bug —
+§4.1 now shows CMAL ahead on NSE and peaks. The distributional comparison stands on
+its own: point metrics collapse 7500 samples to one number.)
 
 **Why the comparison is fair: CRPS generalizes MAE.** For a deterministic forecast — a
 point mass — CRPS collapses exactly to `|obs − pred|`. So both models are scored on the
@@ -234,11 +241,14 @@ corrupted observations — trap §5.2).
 
 | Lead (d) | CMAL | Deterministic | CMAL improvement |
 |---|---|---|---|
-| 1 | 0.916 | 1.231 | **25.6%** |
-| 2 | 1.070 | 1.378 | 22.4% |
-| 4 | 1.081 | 1.452 | 25.5% |
-| 6 | 1.121 | 1.461 | 23.3% |
-| 8 | 1.185 | 1.550 | 23.6% |
+| 0 (nowcast) | 0.916 | 1.231 | **25.6%** |
+| 1 | 1.070 | 1.378 | 22.4% |
+| 3 | 1.081 | 1.452 | 25.5% |
+| 5 | 1.121 | 1.461 | 23.3% |
+| 7 | 1.185 | 1.550 | 23.6% |
+
+CRPS is in mm/day. Lead = zarr time_step (0 = same-day nowcast); an earlier CSV
+labeled these off by one (fixed 2026-08-17).
 
 A consistent **22–26% CRPS reduction**. This is the metric that matters for a forecast
 product, and beyond §4.1's NSE edge it is where the distributional head separates.
@@ -247,20 +257,29 @@ product, and beyond §4.1's NSE edge it is where the distributional head separat
 
 | Lead (d) | Coverage | Verdict | Spread/skill | Reliability (TV) |
 |---|---|---|---|---|
-| 1 | 0.742 | fails | 3.27 | 0.276 |
-| 4 | 0.705 | fails | 3.03 | 0.283 |
-| 8 | 0.664 | fails | 2.71 | 0.292 |
+| 0 (nowcast) | 0.742 | fails | 3.27 | 0.276 |
+| 3 | 0.705 | fails | 3.03 | 0.283 |
+| 7 | 0.664 | fails | 2.71 | 0.292 |
 
-Coverage of **0.66–0.74 against a nominal 0.90**, outside the pre-registered 85–95%
+Coverage of **0.66–0.74 against a nominal 0.90**, outside the pre-specified 85–95%
 band at every lead. Per focus basin at lead 1: Mill Ck 0.805, Bear Ck 0.744, Merced HI
 0.705, Merced Pohono 0.622, **Pitman Ck 0.537**.
 
-**Result 3 — the diagnosis, from an apparent contradiction.** Coverage says the intervals
-are too *narrow* (under-dispersed), while spread/skill ≈ 2.9 says the ensemble standard
-deviation is nearly 3× too *large*. Both are true only if the predictive distribution is
-**heavy-tailed**: variance inflated by rare extreme samples, while the central 90% interval
-remains too concentrated. Too little mass in the "moderately wrong" range, too much in the
-far tail.
+**Result 3 — the diagnosis, settled by the rank histogram (2026-08-17,
+`make_pit_diagnostic.py`).** Coverage says the intervals miss 26–34% of observations,
+while spread/skill ≈ 3 says the ensemble standard deviation is ~3× the RMSE. An earlier
+draft attributed both to heavy tails alone; review noted conditional bias produces the
+same two symptoms, so the PIT/rank histogram was computed (n = 15,907 basin-days,
+nowcast). It is U-shaped and nearly symmetric in aggregate (22% of PIT > 0.9, 20% <
+0.1) — but conditioning on flow reveals **opposite-signed misses: at high flows the
+observation escapes above the interval (22.7% above vs 3.0% below); at low flows it
+escapes below (22.8% vs 8.6%)**. The interval is not merely too narrow — it is
+mis-centered toward the middle of the flow distribution at both ends: regression toward
+the mean, expressed distributionally. The far-tail samples that inflate spread/skill
+(and cause the NaN losses) are a separate, genuine heavy-tail pathology.
+**Consequence for remediation: uniform post-hoc variance inflation cannot fix this** —
+the high-flow misses are displacement, not dispersion. The remedy is flow-conditional
+recalibration (or a bias-aware head), and any fix must be checked against the CRPS gain.
 
 **This root cause explains the genuinely tail-driven CMAL pathologies:**
 - the NaN training losses (a mixture component's scale blowing up),
@@ -278,6 +297,17 @@ better *and* overconfident about being better. Remediation to try: fewer mixture
 components (`n_distributions` 3 → 1–2), or the GMM head, which the framework's own
 docstring describes as less brittle than CMAL.
 
+### 4.1e Held-out January-1997 protocol (recorded 2026-08-17; experiment run 2026-06-06)
+
+The 1997 claims quoted in the writeup come from `make_1997.py` and config
+`ca-28basin-1997-config.yml`: h=16 deterministic head, **train 2002–2014, validation
+2000–2001, test 1993–1999** (the entire 1990s excluded from training), scored on water
+year 1997 against the NWM **v2.1** retrospective at the focus gauges. Forcing caveat: in
+1997 the forecast-era products (HRES, IMERG) do not exist; `union_mapping` backfills
+from ERA5-Land/CPC, so the model runs on degraded inputs relative to the 2017/2023 test
+years — part of the peak underestimate may be forcing, not model. Peak errors: LSTM −43%
+to −78%, NWM −7% to −86%; both time the peak to ~1 day.
+
 ### 4.2 Honest baselines — `make_baselines.py`
 
 **Recomputed 2026-08-13 on the flood window (WY2017 + WY2023), climatology fitted on the
@@ -286,7 +316,7 @@ flood-split TRAINING periods only.** These are apples-to-apples with §4.1.
 **LSTM reference (deterministic h128 @ep14): cohort median NSE 0.754, focus-5 median
 0.819** (per-lead values below from `make_lstm_by_lead.py`, `lstm_by_lead.csv`).
 
-| Baseline | all-28 | focus-5 |
+| Baseline | 22-basin cohort | focus-5 |
 |---|---|---|
 | train-period mean | −0.084 | −0.203 |
 | day-of-year climatology | **+0.198** | +0.218 |
@@ -321,10 +351,13 @@ its nearest comparison is lead-1 persistence.
 - **At 1 day ahead, yesterday's gauge beats the LSTM nearly everywhere** — cohort 0.712
   vs 0.667, focus-5 0.944 vs 0.810. The earlier "LSTM beats persistence at every lead
   across all basins" does not survive the pairing correction.
-- **The LSTM overtakes at 2 days ahead across the cohort** (0.688 vs 0.484) **and at
-  3 days on the high-storage snowmelt focus basins** (0.809 vs 0.803, decisively by
-  day 4: 0.811 vs 0.752), and persistence collapses at longer leads while the LSTM's
-  skill decays only slowly.
+- **The LSTM overtakes at 2 days ahead across the cohort** (0.688 vs 0.484 plain,
+  0.566 damped) **and on the high-storage snowmelt focus basins at 3 days vs plain
+  persistence (0.809 vs 0.803) but only at 4 days vs damped persistence** (0.811 vs
+  0.768; damped still wins day 3, 0.814 vs 0.809). Damped persistence
+  (climatology + α^k × lag-k anomaly, α fit on training) is the stronger null and
+  decays slower; per-lead values are in `persistence_by_lead.csv` (damped_* columns,
+  added 2026-08-17). Both nulls collapse at long leads while the LSTM decays slowly.
 - **On rain-driven Mill Ck the LSTM wins at every lead** (0.618 vs 0.541 at lead 1;
   persistence is negative by lead 3) — flashy rain response is not persistent.
 
@@ -349,7 +382,7 @@ sequence, misses the March 2023 events — state this wherever the number appear
 Windows scored separately; both models against the identical observed series; NWM
 converted m³/s → mm/day via Caravan basin areas (≤4.5% error, §2.2); the retrospective
 is analysis-forced, so it is compared to the LSTM's lead-0 hindcast. Focus-basin
-medians (per-basin table in `lstm_vs_nwm_flood_metrics.csv`):
+medians (per-basin table written by `make_benchmark_flood.py`):
 
 | Window | Model | NSE | FHV | Peak-MAPE |
 |---|---|---|---|---|

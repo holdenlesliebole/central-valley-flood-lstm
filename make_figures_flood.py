@@ -70,14 +70,15 @@ def fig_hydrographs() -> None:
         ax.plot(o.index, o, color=INK, lw=1.1, label='observed')
         ax.plot(s.index, s, color=BLUE, lw=1.4, alpha=0.9, label='LSTM (lead 0)')
         pk = o.idxmax()
+        ax.margins(y=0.14)
         ax.annotate(f'obs peak {o.max():.0f}', xy=(pk, o.max()),
-                    xytext=(6, -2), textcoords='offset points',
+                    xytext=(-6, 0), textcoords='offset points', ha='right',
                     fontsize=7.5, color='#6b6b67')
         ax.set_ylabel('mm/day')
         ax.text(0.005, 0.86, name, transform=ax.transAxes, fontsize=9,
                 fontweight='bold', color=INK)
         ax.margins(x=0.004)
-    axes[0].legend(loc='upper right', frameon=False, fontsize=8, ncol=2)
+    axes[0].legend(loc='center right', frameon=False, fontsize=8)
     axes[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=2))
     axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
     fig.suptitle('Held-out WY2017 (Oroville AR season): timing is right, magnitude is not',
@@ -102,24 +103,35 @@ def fig_persistence() -> None:
     for ax, (title, lf, pf, _) in zip(axes, panels):
         lv = [lf[f'NSE_ts{k}'].median() for k in leads]
         pv = [pf[str(k)].median() for k in leads]
+        dv = [pf[f'damped_{k}'].median() for k in leads]
         ax.plot(list(leads), lv, color=BLUE, lw=2, marker='o', ms=4, label='LSTM')
         ax.plot(list(leads), pv, color=ORANGE, lw=2, marker='o', ms=4,
                 label='gauge persistence')
+        ax.plot(list(leads), dv, color=ORANGE2, lw=1.8, ls='--', marker='o',
+                ms=3.5, label='damped persistence')
         ax.text(leads[-1], lv[-1], '  LSTM', color=BLUE, va='center', fontsize=8.5)
         ax.text(leads[-1], pv[-1], '  persistence', color='#b35d1a', va='center',
                 fontsize=8.5)
         cross = next((k for k, (a, b) in enumerate(zip(lv, pv), 1) if a > b), None)
+        cross_d = next((k for k, (a, b) in enumerate(zip(lv, dv), 1) if a > b), None)
         if cross:
             ax.axvline(cross, color='#c9c9c4', lw=0.9, ls=':')
-            ax.text(cross + 0.15, 0.97, f'crossover day {cross}',
+            label = (f'crossover day {cross}' if cross_d == cross
+                     else f'crossover day {cross} (plain)')
+            ax.text(cross + 0.15, 0.97, label,
+                    transform=ax.get_xaxis_transform(), fontsize=7.5,
+                    color='#6b6b67', ha='left', va='top')
+        if cross_d and cross_d != cross:
+            ax.axvline(cross_d, color='#c9c9c4', lw=0.9, ls=':')
+            ax.text(cross_d + 0.15, 0.90, f'day {cross_d} (damped)',
                     transform=ax.get_xaxis_transform(), fontsize=7.5,
                     color='#6b6b67', ha='left', va='top')
         ax.set_title(title, fontsize=9.5)
         ax.set_xlabel('forecast lead (days)')
-        ax.set_xlim(0.7, 8.6)
+        ax.set_xlim(0.7, 7.9)
     axes[0].set_ylabel('median NSE')
     axes[0].legend(loc='lower left', frameon=False, fontsize=8)
-    fig.suptitle('Yesterday’s gauge wins day 1; the model wins the week',
+    fig.suptitle('The gauge wins day 1; the model wins the week (crossover day 2–4)',
                  fontsize=10.5, x=0.02, ha='left')
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(f'{OUT}/persistence_crossover.png', bbox_inches='tight')
@@ -137,9 +149,9 @@ def fig_lobo() -> None:
     fig, ax = plt.subplots(figsize=(8.2, 3.2))
     ax.plot(o.index, o, color=INK, lw=1.1, label='observed')
     ax.plot(gauged.index, gauged, color=BLUE, lw=1.4, alpha=0.9,
-            label='trained on this basin (NSE 0.73)')
+            label='trained on this basin (NSE 0.73, both flood WYs)')
     ax.plot(ungauged.index, ungauged, color=PURPLE, lw=1.4, alpha=0.9,
-            label='basin held out of training (NSE −0.74)')
+            label='basin held out of training (NSE −0.74, both flood WYs)')
     ax.set_ylabel('mm/day')
     ax.margins(x=0.004)
     ax.legend(loc='upper right', frameon=False, fontsize=8)
@@ -214,8 +226,9 @@ def fig_nwm() -> None:
         ax.set_title(title, fontsize=9.5)
         ax.legend(loc='lower left', frameon=False, fontsize=8)
     axes[0].set_ylabel('NSE (clipped at −0.55)')
-    fig.suptitle('The benchmark win depends on the benchmark: NWM v3.0 wins WY2017, '
-                 'the LSTM wins WY2023 and Bear Ck', fontsize=10.5, x=0.02, ha='left')
+    fig.suptitle('The benchmark win depends on the benchmark: NWM v3.0 leads WY2017 '
+                 '(3 of 5 basins); the LSTM leads WY2023 and Bear Ck',
+                 fontsize=10.5, x=0.02, ha='left')
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(f'{OUT}/lstm_vs_nwm_flood.png', bbox_inches='tight')
     plt.close(fig)

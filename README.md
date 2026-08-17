@@ -26,6 +26,10 @@ across hydrologic regimes, and probabilistic calibration.
 | `make_benchmark.py` | NWM v2.1 benchmark, original 2012–2014 window |
 | `make_benchmark_flood.py` | NWM v2.1/v3.0 benchmark on the flood years |
 | `make_probabilistic_scores.py` | CRPS, coverage, reliability, spread/skill |
+| `make_model_comparison.py` | The headline model-comparison table: one protocol, fixed cohort |
+| `make_cmal_point_metrics.py` | CMAL point metrics from stored samples, with bootstrap spread |
+| `make_pit_diagnostic.py` | PIT/rank histogram + flow-conditional coverage |
+| `make_figures_flood.py` | Figure suite for the writeup |
 | `make_1997.py` | Held-out January-1997 flood analysis |
 | `make_figures.py` | Hydrograph/skill figures |
 | `upstream/` | Pinned-commit setup for the vendored framework + local patch |

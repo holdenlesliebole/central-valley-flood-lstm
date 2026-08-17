@@ -171,6 +171,12 @@ def score_deterministic(sim: np.ndarray, obs: np.ndarray) -> dict:
 def main() -> None:
     cm = xr.open_zarr(CMAL, consolidated=False)
     dt = xr.open_zarr(DETERM, consolidated=False)
+    # Obs and sims come from different stores positionally; a regenerated store
+    # would misalign silently without this. The `lead` column equals the zarr
+    # time_step: 0 = same-day nowcast, k = k-day-ahead forecast (fixed
+    # 2026-08-17; previously labeled off by one).
+    assert np.array_equal(cm['date'].values, dt['date'].values)
+    assert list(cm.basin.values) == list(dt.basin.values)
     basins = [str(b) for b in cm.basin.values]
     n_lead = cm.sizes['time_step']
     step = max(1, cm.sizes['samples'] // MAX_SAMPLES)
@@ -201,11 +207,11 @@ def main() -> None:
             r = score_ensemble(sim[valid], obs[valid])
             if r:
                 rows.append({'model': 'CMAL', 'basin': basin,
-                             'name': FOCUS.get(basin, ''), 'lead': lead + 1, **r})
+                             'name': FOCUS.get(basin, ''), 'lead': lead, **r})
             r = score_deterministic(dsim[valid], obs[valid])
             if r:
                 rows.append({'model': 'deterministic', 'basin': basin,
-                             'name': FOCUS.get(basin, ''), 'lead': lead + 1, **r})
+                             'name': FOCUS.get(basin, ''), 'lead': lead, **r})
 
     df = pd.DataFrame(rows)
     os.makedirs(OUT_DIR, exist_ok=True)

@@ -15,7 +15,7 @@ FOCUS = {
     'camels_11237500': (17116209, 'Pitman Ck (snow)'),
     'camels_11381500': (8019544,  'Mill Ck (rain)'),
 }
-rd = sorted(glob.glob(os.path.expanduser('~/Documents/Hydrology/runs/ca-28basin-1997_*')))[-1]
+rd = sorted(glob.glob(os.path.expanduser('~/Documents/Side_projects/Hydrology/runs/ca-28basin-1997_*')))[-1]
 figdir = os.path.join(rd, 'figures'); os.makedirs(figdir, exist_ok=True)
 adf = pd.read_csv(os.path.expanduser('~/data/caravan-nc/attributes/camels/attributes_other_camels.csv'))
 area = dict(zip(adf['gauge_id'], adf['area']))

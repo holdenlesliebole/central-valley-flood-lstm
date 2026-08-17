@@ -79,7 +79,16 @@ FOCUS = ['camels_11264500', 'camels_11266500', 'camels_11230500',
          'camels_11237500', 'camels_11381500']
 
 
+WINDOWS = [('2016-10-01', '2017-09-30'), ('2022-10-01', '2023-09-30')]
+
+
 def score(obs, sim, dates):
+    """NSE/KGE pooled over both test windows; peak metrics per window, averaged.
+
+    Concatenating disjoint windows would let peak detection see a spurious
+    seam event (the same rule make_benchmark_flood.py enforces); NSE/KGE are
+    day-wise and immune (checked: pooled vs split differ by <0.001).
+    """
     valid = np.isfinite(obs) & np.isfinite(sim)
     if valid.sum() < 30:
         return {}
@@ -87,10 +96,24 @@ def score(obs, sim, dates):
     s = xr.DataArray(sim[valid], dims='date', coords={'date': dates[valid]})
     out = {'n_days': int(valid.sum())}
     for name, fn in METRICS:
-        try:
-            out[name] = float(fn(o, s))
-        except Exception:
-            out[name] = np.nan
+        if name in ('NSE', 'KGE'):
+            try:
+                out[name] = float(fn(o, s))
+            except Exception:
+                out[name] = np.nan
+        else:
+            vals = []
+            for a, b in WINDOWS:
+                m = valid & (dates >= a) & (dates <= b)
+                if m.sum() < 30:
+                    continue
+                ow = xr.DataArray(obs[m], dims='date', coords={'date': dates[m]})
+                sw = xr.DataArray(sim[m], dims='date', coords={'date': dates[m]})
+                try:
+                    vals.append(float(fn(ow, sw)))
+                except Exception:
+                    pass
+            out[name] = float(np.nanmean(vals)) if vals else np.nan
     return out
 
 
