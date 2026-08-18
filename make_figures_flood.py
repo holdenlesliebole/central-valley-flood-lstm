@@ -71,8 +71,12 @@ def fig_hydrographs() -> None:
         ax.plot(s.index, s, color=BLUE, lw=1.4, alpha=0.9, label='LSTM (lead 0)')
         pk = o.idxmax()
         ax.margins(y=0.14)
+        # Annotate away from the basin-name label: text to the right when the
+        # peak sits in the left third of the window.
+        left = (pk - o.index[0]) / (o.index[-1] - o.index[0]) < 0.33
         ax.annotate(f'obs peak {o.max():.0f}', xy=(pk, o.max()),
-                    xytext=(-6, 0), textcoords='offset points', ha='right',
+                    xytext=(6 if left else -6, 0), textcoords='offset points',
+                    ha='left' if left else 'right',
                     fontsize=7.5, color='#6b6b67')
         ax.set_ylabel('mm/day')
         ax.text(0.005, 0.86, name, transform=ax.transAxes, fontsize=9,

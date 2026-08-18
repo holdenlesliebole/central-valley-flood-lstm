@@ -152,19 +152,23 @@ averaged, so the seam between disjoint windows cannot register as an event
 
 | Run | h | best ep | test NSE | KGE | FHV | Missed-Pk | Peak-MAPE | focus-5 NSE |
 |---|---|---|---|---|---|---|---|---|
-| Determ., original split¹ | 16 | 15 | **0.836**¹ | — | — | — | — | 0.841¹ |
+| Determ., original split¹ | 16 | 15 | 0.836¹ | — | — | — | — | 0.841¹ |
+| Determ., original split¹ | 128 | 13 | **0.862**¹ | — | — | — | — | 0.923¹ |
 | Determ., flood split | 16 | 15 | 0.679 | 0.765 | −12.2% | 0.333 | 48.1% | 0.816 |
 | CMAL, flood split | 16 | 2 | 0.517 | 0.411 | −60.4% | 0.667 | 70.1% | 0.425 |
 | Determ., flood split | 128 | 14 | 0.754 | **0.776** | −18.6% | 0.450 | 47.6% | 0.819 |
 | **CMAL, flood split** | **128** | **16** | **0.784** | 0.729 | −20.9% | **0.333** | **42.4%** | **0.824** |
 
-¹ 2012–2014 drought window, same 22-basin cohort (its own window has 26 scoreable
-basins; median there 0.808 — the cohort restriction is what moves it to 0.836).
+¹ 2012–2014 drought window, same 22-basin cohort (that window has 26 scoreable basins;
+the h16 median over all 26 is 0.808). The h128 original-split run (config
+`ca-28basin-orig-h128-config.yml`, best-val epoch 13, added 2026-08-17) makes the
+headline drought→flood comparison same-capacity: **0.862 → 0.754**. Note the flood
+split trains on ~11 *more* years, so the window effect is, if anything, understated.
 
 **Two findings carry the project:**
 
-- **NSE falls 0.836 → 0.754 (h128) from the drought window to real flood years**, on
-  identical basins. Peak *timing* is good (~1 day) but magnitude is not (FHV ≈ −18%,
+- **NSE falls 0.862 → 0.754 at matched capacity (h128) from the drought window to real
+  flood years**, on identical basins (h16: 0.836 → 0.679). Peak *timing* is good (~1 day) but magnitude is not (FHV ≈ −18%,
   ~47% of peaks missed): **the model gets *when*, not *how big*.**
 - **Capacity buys average accuracy and costs peak accuracy.** Deterministic h16→h128
   improved NSE 0.679→0.754 but worsened FHV (−12.2%→−18.6%) and Missed-Peaks
