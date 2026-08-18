@@ -39,11 +39,23 @@ basins from the Caravan dataset \citep{kratzert2023caravan} with MultiMet forcin
 IMERG, CPC precipitation and temperature). Streamflow targets were extended from 2014 to
 October 2024 using USGS NWIS so that two genuine flood water years could be held out.
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.78\textwidth]{study_map.png}
+\caption{The 28 training basins. Color gives the fraction of precipitation falling as
+snow (the regime variable behind Findings 1, 3 and 5); rings mark the five focus
+basins; crosses mark the six basins with no flood-window observations, excluded from
+every cohort median. The snowmelt focus basins sit in the high Sierra; Mill Creek, the
+one rain-driven focus basin, drains the southern Cascades toward the Sacramento
+Valley.}
+\label{fig:map}
+\end{figure}
+
 \textbf{Test set: water years 2017 and 2023} --- the Oroville-spillway atmospheric-river
 season and the 2023 AR sequence. Training uses every remaining day in the record outside
 the test windows and the 2009--2011 validation years. Checkpoints are selected on
 validation, not taken from the last epoch. Of the 28 trained basins
-\citep[CAMELS;][]{newman2015camels}, 22 have observations in the flood windows; medians
+\citep[CAMELS;][]{newman2015camels}, 22 have observations in the flood windows (Figure~\ref{fig:map}); medians
 below are over that fixed cohort, except the NWM comparison in Finding~5, which is over
 the five focus basins where the NWM reaches were extracted.
 
