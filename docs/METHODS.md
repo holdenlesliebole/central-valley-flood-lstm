@@ -1,6 +1,6 @@
 # Central Valley flood-forecasting LSTM — methods, results, and traps
 
-**Last updated 2026-08-18.** This is the reproducibility and methodology record for the
+**Last updated 2026-08-18 (b).** This is the reproducibility and methodology record for the
 code in this repo; the public-facing summary is the site writeup, which must not drift
 from the numbers here. Paths in this file are machine-specific.
 
@@ -413,6 +413,41 @@ medians (per-basin table written by `make_benchmark_flood.py`):
   window; treat NSE/FHV/Peak-MAPE as primary here.
 
 ---
+
+### 4.4 Storm-conditioned error structure (2026-08-18)
+
+Two analyses locate where the flood-year error lives. Both use verified source obs,
+the 22-basin cohort, deterministic h128 sims at time_step 0, and windows scored
+separately.
+
+**Skill by storm size** (`make_storm_stratified_skill.py`; ERA5-Land daily precip
+streamed from GCS, cached at `~/data/precip_test_windows.nc`). Basin-days binned by
+each basin's own wet-day precipitation climatology percentile; 15,907 basin-days
+classified. Relative bias = mean(sim−obs)/mean(obs); subset NSE is computed on the
+bin's own days and is not comparable to whole-record NSE.
+
+| Bin | n | bias (lead 0) | bias (lead 3) | under-pred. frac (lead 0) |
+|---|---|---|---|---|
+| dry (<1 mm/d) | 10,645 | −0.015 | −0.038 | 0.513 |
+| wet ≤P50 | 2,368 | −0.008 | −0.057 | 0.481 |
+| P50–P80 | 1,550 | +0.004 | −0.010 | 0.481 |
+| P80–P95 | 931 | **−0.219** | −0.144 | 0.673 |
+| >P95 | 413 | **−0.518** | −0.532 | **0.838** |
+
+Bias is within ±2% of zero up to the 80th percentile and breaks above it. The
+magnitude miss of §4.1 is concentrated almost entirely above the 80th storm
+percentile, not spread across the flow distribution.
+
+**Peak error vs event magnitude** (`make_peak_error_curve.py`). 281 observed flow
+events (find_peaks, prominence ≥ per-basin P80, ≥5-day separation; sim peak matched
+within ±2 days). x = obs peak / basin's maximum training-record flow ("normalized
+magnitude"). Binned median relative peak error: −0.126 (magnitude 0–0.25, n=163),
+−0.265 (0.25–0.5, n=99), −0.334 (0.5–0.75, n=16), −0.723 (0.75–1.0, n=3). Pooled
+Theil–Sen slope −0.661 (rain basins −0.685, n=214; snow −0.228, n=67 — the snow
+slope is anchored by few large events). **No test event exceeds the training-record
+maximum** (largest normalized magnitude 0.980), so the curve measures approach to
+the edge of the training distribution, not extrapolation beyond it; that region
+remains unmeasured pending a scenario-forcing stress test.
 
 ## 5. Traps — read before trusting any number
 

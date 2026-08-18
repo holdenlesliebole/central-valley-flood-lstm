@@ -187,6 +187,42 @@ of the flow distribution and paid for it in the tail, consistent with regression
 the mean on out-of-distribution extremes. One training run per capacity, so this is a
 consistent gradient rather than a seed-controlled result.
 
+The location of the misses is measurable. Binning the 15{,}907 test basin-days by each
+basin's own wet-day precipitation climatology
+(Figure~\ref{fig:storm}): bias stays within $\pm 2\%$ of zero for storms up to the
+80th percentile, then breaks. Above the 95th percentile the model under-predicts flow
+by 52\% and runs low on 84\% of days. The error is not spread across the flow
+distribution; it is concentrated in the top fifth of storms.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{storm_stratified_skill.png}
+\caption{Skill by storm-size bin (percentile of each basin's wet-day precipitation
+climatology; ERA5-Land forcing), WY2017+WY2023, leads 0 and 3. Left: relative bias,
+mean(sim$-$obs)/mean(obs). Right: fraction of basin-days with sim $<$ obs; dashed line
+at 0.5.}
+\label{fig:storm}
+\end{figure}
+
+The same structure appears event by event (Figure~\ref{fig:peakcurve}). Across 281
+observed flow peaks in the test windows, the median miss deepens with event size:
+$-13\%$ for peaks below a quarter of the basin's training-record maximum flow, $-26\%$
+and $-33\%$ in the middle bins, $-72\%$ for the three events that approach the
+training maximum (Theil--Sen slope $-0.66$ per unit of normalized magnitude). No test
+event exceeds the training maximum, so these curves measure the approach to the edge of
+the training distribution. Beyond that edge there is no data, which is the case for the
+scenario experiment in ``The winter everyone is watching.''
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{peak_error_curve.png}
+\caption{Relative peak error, (sim$-$obs)/obs, vs observed peak magnitude normalized
+by the basin's training-record maximum flow. 281 events, 22 basins, WY2017+WY2023.
+Points colored by regime; black markers: binned medians; dashed: Theil--Sen fit
+(slope $-0.66$).}
+\label{fig:peakcurve}
+\end{figure}
+
 \finding{Finding 3 --- It regionalizes within a regime and inverts across one}
 
 Most basins have no gauge, so ungauged prediction is the version of this problem water
@@ -350,12 +386,13 @@ strong El Ni\~no does change with some reliability is storm character, favoring 
 southward-shifted subtropical jet and warmer atmospheric rivers with high snow levels:
 more rain falling on basins that usually take snow.
 
-The peak problem gets worse, not better. Every model tested here underestimates
-flood-peak magnitude on out-of-distribution extremes, the LSTM by 40--80\% on the 1997
-event, and the capacity experiment indicates that larger networks regress harder. An
-ARkStorm-class sequence sits farther outside the training distribution than anything
-tested: the largest events in the model's 40-year training record are the WY2017 and
-WY2023 storms it under-predicted by roughly half.
+The peak problem gets worse, not better, and the rate is now measured
+(Figures~\ref{fig:storm} and \ref{fig:peakcurve}). Bias is near zero below the 80th
+storm percentile, $-52\%$ above the 95th; across 281 events the median peak miss
+deepens from $-13\%$ to $-72\%$ as events approach the largest flow in the training
+record, and the capacity experiment indicates that larger networks regress harder. An
+ARkStorm-class sequence sits beyond the training maximum entirely, in the region where
+the measured curve runs out of data while still steepening.
 
 Warm storms move basins across the regime boundary from Finding~3. High snow levels
 turn snowmelt catchments into temporary rain catchments, the direction in which the
