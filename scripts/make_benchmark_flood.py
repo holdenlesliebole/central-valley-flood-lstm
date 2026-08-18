@@ -37,7 +37,7 @@ Fairness notes:
     definitions used to score the LSTM.
 
 Usage:  TORCHDYNAMO_DISABLE=1 python make_benchmark_flood.py
-Writes: ~/Documents/Job_Search/portfolio/central_valley_figures/lstm_vs_nwm_flood_metrics.csv
+Writes: ~/Documents/Side_projects/Hydrology/outputs/figures/lstm_vs_nwm_flood_metrics.csv
         ~/data/nwm21_focus_wy2017.nc, ~/data/nwm30_focus_flood.nc (caches)
 """
 
@@ -65,7 +65,7 @@ RUN_DIR = os.path.expanduser(
 )
 EPOCH = 'model_epoch014'  # best-validation checkpoint (METHODS.md section 3.2)
 OUT_DIR = os.path.expanduser(
-    '~/Documents/Job_Search/portfolio/central_valley_figures'
+    '~/Documents/Side_projects/Hydrology/outputs/figures'
 )
 
 FOCUS = {  # gauge -> (NHDPlus COMID, label)

@@ -21,7 +21,7 @@ Metrics at time_step 0, matching the convention of every test_metrics.csv
 number in METHODS.md.
 
 Usage:  python make_cmal_point_metrics.py
-Writes: ~/Documents/Job_Search/portfolio/central_valley_figures/cmal_point_metrics.csv
+Writes: ~/Documents/Side_projects/Hydrology/outputs/figures/cmal_point_metrics.csv
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ CMAL = f'{RUNS}/ca-28basin-cmal-flood-h128-nantol_1208_182446/test/model_epoch01
 DETERM = f'{RUNS}/ca-28basin-flood-h128_1208_025528/test/model_epoch014/test_results.zarr'
 CARAVAN = os.path.expanduser('~/data/caravan-nc-extended/timeseries/netcdf/camels')
 OUT_DIR = os.path.expanduser(
-    '~/Documents/Job_Search/portfolio/central_valley_figures'
+    '~/Documents/Side_projects/Hydrology/outputs/figures'
 )
 
 N_BOOT = 10

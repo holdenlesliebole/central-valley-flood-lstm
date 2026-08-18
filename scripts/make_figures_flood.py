@@ -6,7 +6,7 @@ NWM = orange (v2.1 = lighter/dashed), CMAL = purple, persistence = orange.
 Palette CVD-validated (dataviz validator, all checks pass).
 
 Usage:  python make_figures_flood.py
-Writes: ~/Documents/Job_Search/portfolio/central_valley_figures/*.png
+Writes: ~/Documents/Side_projects/Hydrology/outputs/figures/*.png
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import pandas as pd
 import xarray as xr
 
 RUNS = os.path.expanduser('~/Documents/Side_projects/Hydrology/runs')
-OUT = os.path.expanduser('~/Documents/Job_Search/portfolio/central_valley_figures')
+OUT = os.path.expanduser('~/Documents/Side_projects/Hydrology/outputs/figures')
 CARAVAN = os.path.expanduser('~/data/caravan-nc-extended/timeseries/netcdf/camels')
 
 INK, BLUE, ORANGE, ORANGE2, PURPLE = '#3a3a38', '#2f6bd8', '#e07b2f', '#f0a86e', '#8458d8'

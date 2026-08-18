@@ -11,7 +11,7 @@ The question this project actually answers is not "does the LSTM win" but
 persistence as the binding baseline, peak-magnitude skill, ungauged transfer
 across hydrologic regimes, and probabilistic calibration.
 
-- **`METHODS.md`** — methods, splits, results, reproducibility, and the traps
+- **`docs/METHODS.md`** — methods, splits, results, reproducibility, and the traps
   hit along the way. Read it before running anything or quoting any number.
 - Writeup: *When can you trust an ML streamflow forecast?* (personal site).
 
@@ -19,19 +19,12 @@ across hydrologic regimes, and probabilistic calibration.
 
 | Path | What |
 |---|---|
+| `docs/METHODS.md` | Methods, results, reproducibility, traps — the numeric source of truth |
+| `paper/` | LaTeX manuscript of the writeup (`main.tex`) |
+| `scripts/` | All analysis and figure scripts (record extension, baselines, benchmarks, scoring, figures) |
 | `configs/` | Training/eval configs for all runs (original split, flood split, CMAL, leave-one-basin-out) |
-| `extend_targets.py` | Streamflow record extension 2015–2024 from USGS NWIS, with closure test |
-| `make_baselines.py` | Honest-baseline suite: mean, climatology, persistence (by lead) |
-| `make_lstm_by_lead.py` | Per-lead LSTM skill on the flood window |
-| `make_benchmark.py` | NWM v2.1 benchmark, original 2012–2014 window |
-| `make_benchmark_flood.py` | NWM v2.1/v3.0 benchmark on the flood years |
-| `make_probabilistic_scores.py` | CRPS, coverage, reliability, spread/skill |
-| `make_model_comparison.py` | The headline model-comparison table: one protocol, fixed cohort |
-| `make_cmal_point_metrics.py` | CMAL point metrics from stored samples, with bootstrap spread |
-| `make_pit_diagnostic.py` | PIT/rank histogram + flow-conditional coverage |
-| `make_figures_flood.py` | Figure suite for the writeup |
-| `make_1997.py` | Held-out January-1997 flood analysis |
-| `make_figures.py` | Hydrograph/skill figures |
+| `outputs/figures/` | Canonical figures and metric CSVs, written by `scripts/` |
+| `runs/` | Trained runs (local only, not tracked) |
 | `upstream/` | Pinned-commit setup for the vendored framework + local patch |
 
 ## Setup
@@ -41,6 +34,7 @@ across hydrologic regimes, and probabilistic calibration.
 2. Build the env from `upstream/conda-macos.yml` (macOS; see METHODS.md §1 for
    the micromamba route and the CUDA-only pitfall in upstream's own env file).
 3. `pip install -e central_valley_floodforecasting`.
+   Run scripts from the repo root: `python scripts/make_<name>.py`.
 4. Data: streamflow targets from Caravan-nc (Zenodo) extended via
    `extend_targets.py`; forcing streams from `gs://caravan-multimet/v1.1`.
    Nothing large is stored in this repo.

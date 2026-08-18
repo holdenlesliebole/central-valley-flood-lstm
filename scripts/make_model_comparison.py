@@ -16,7 +16,7 @@ Also reports the original-split (2012-2014) run on the same 22-basin cohort so
 the drought-window -> flood-window comparison is apples-to-apples.
 
 Usage:  python make_model_comparison.py
-Writes: ~/Documents/Job_Search/portfolio/central_valley_figures/model_comparison.csv
+Writes: ~/Documents/Side_projects/Hydrology/outputs/figures/model_comparison.csv
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from googlehydrology.evaluation.metrics import (
 RUNS = os.path.expanduser('~/Documents/Side_projects/Hydrology/runs')
 CARAVAN = os.path.expanduser('~/data/caravan-nc-extended/timeseries/netcdf/camels')
 OUT_DIR = os.path.expanduser(
-    '~/Documents/Job_Search/portfolio/central_valley_figures'
+    '~/Documents/Side_projects/Hydrology/outputs/figures'
 )
 
 MODELS = {  # label -> (zarr path, is_distributional)

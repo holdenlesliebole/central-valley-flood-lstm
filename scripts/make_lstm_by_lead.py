@@ -17,7 +17,7 @@ lead 1 (yesterday's gauge). Both indexings are written out so the comparison
 table can be built either way, explicitly.
 
 Usage:  python make_lstm_by_lead.py
-Writes: ~/Documents/Job_Search/portfolio/central_valley_figures/lstm_by_lead.csv
+Writes: ~/Documents/Side_projects/Hydrology/outputs/figures/lstm_by_lead.csv
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ RUN_DIR = os.path.expanduser(
 )
 EPOCH = 'model_epoch014'
 OUT_DIR = os.path.expanduser(
-    '~/Documents/Job_Search/portfolio/central_valley_figures'
+    '~/Documents/Side_projects/Hydrology/outputs/figures'
 )
 
 FOCUS = {

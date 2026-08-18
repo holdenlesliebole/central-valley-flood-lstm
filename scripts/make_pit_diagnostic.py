@@ -23,8 +23,8 @@ Obs from source netCDFs; samples from the clean CMAL zarr; ties at zero flow
 are split by randomized PIT so the bottom bin is not inflated by dry days.
 
 Usage:  python make_pit_diagnostic.py
-Writes: ~/Documents/Job_Search/portfolio/central_valley_figures/pit_diagnostic.csv
-        ~/Documents/Job_Search/portfolio/central_valley_figures/pit_histogram.png
+Writes: ~/Documents/Side_projects/Hydrology/outputs/figures/pit_diagnostic.csv
+        ~/Documents/Side_projects/Hydrology/outputs/figures/pit_histogram.png
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ import xarray as xr
 RUNS = os.path.expanduser('~/Documents/Side_projects/Hydrology/runs')
 CMAL = f'{RUNS}/ca-28basin-cmal-flood-h128-nantol_1208_182446/test/model_epoch016/test_results.zarr'
 CARAVAN = os.path.expanduser('~/data/caravan-nc-extended/timeseries/netcdf/camels')
-OUT = os.path.expanduser('~/Documents/Job_Search/portfolio/central_valley_figures')
+OUT = os.path.expanduser('~/Documents/Side_projects/Hydrology/outputs/figures')
 
 N_BINS = 20
 TS = 0  # nowcast, matching the point-metric convention

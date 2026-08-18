@@ -63,7 +63,7 @@ import xarray as xr
 
 RUNS = os.path.expanduser('~/Documents/Side_projects/Hydrology/runs')
 OUT_DIR = os.path.expanduser(
-    '~/Documents/Job_Search/portfolio/central_valley_figures'
+    '~/Documents/Side_projects/Hydrology/outputs/figures'
 )
 
 CMAL = f'{RUNS}/ca-28basin-cmal-flood-h128-nantol_1208_182446/test/model_epoch016/test_results.zarr'

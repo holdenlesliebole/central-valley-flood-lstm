@@ -44,7 +44,7 @@ CARAVAN = os.path.expanduser(
     '~/data/caravan-nc-extended/timeseries/netcdf/camels'
 )
 OUT_DIR = os.path.expanduser(
-    '~/Documents/Job_Search/portfolio/central_valley_figures'
+    '~/Documents/Side_projects/Hydrology/outputs/figures'
 )
 
 # Match the FLOOD-SPLIT config exactly (configs/ca-28basin-flood-h128-config.yml).

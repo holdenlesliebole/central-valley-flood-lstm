@@ -1,0 +1,6 @@
+basin,obs_peak_mmd,obs_peak_date,LSTM_WY97_NSE,LSTM_peak_err%,LSTM_peak_lag_d,NWM_WY97_NSE,NWM_peak_err%,NWM_peak_lag_d
+Merced @ Happy Isles (snow),47.15,1997-01-02,0.669,-56.0,0,0.366,-69.0,148
+Merced @ Pohono (snow),61.82,1997-01-02,0.578,-61.0,0,0.52,-59.0,1
+Bear Ck (snow),19.08,1997-01-02,0.659,-43.0,133,0.055,-9.0,137
+Pitman Ck (snow),90.79,1997-01-02,0.502,-78.0,1,0.293,-86.0,110
+Mill Ck (rain),103.88,1997-01-01,0.639,-65.0,0,0.889,-7.0,0

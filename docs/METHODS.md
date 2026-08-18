@@ -1,6 +1,6 @@
 # Central Valley flood-forecasting LSTM — methods, results, and traps
 
-**Last updated 2026-08-17.** This is the reproducibility and methodology record for the
+**Last updated 2026-08-18.** This is the reproducibility and methodology record for the
 code in this repo; the public-facing summary is the site writeup, which must not drift
 from the numbers here. Paths in this file are machine-specific.
 
@@ -16,7 +16,7 @@ record extension, an honest-baseline suite, and the evaluation protocol below.
 ```bash
 source ~/opt/anaconda3/etc/profile.d/conda.sh
 conda activate googlehydrology
-cd ~/Documents/Side_projects/Hydrology
+cd ~/Documents/Side_projects/Hydrology   # scripts live in scripts/, outputs in outputs/figures/
 export TORCHDYNAMO_DISABLE=1                 # REQUIRED - see 1.2
 run train    --config-file configs/<name>.yml
 run evaluate --run-dir runs/<run> --epoch N --period test
