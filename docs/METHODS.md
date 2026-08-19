@@ -449,6 +449,44 @@ maximum** (largest normalized magnitude 0.980), so the curve measures approach t
 the edge of the training distribution, not extrapolation beyond it; that region
 remains unmeasured pending a scenario-forcing stress test.
 
+### 4.5 Flow-conditional recalibration (2026-08-18) — coverage recovered at near-zero CRPS cost
+
+`make_recalibration.py`. Cross-window conformal design: an affine map of the ensemble,
+x' = mu·(m + s·(x−m)) with m the per-day sample median, is fit on one flood water year
+and applied to the other (both directions; composite reported). Bands assigned by the
+predicted sample median normalized per basin (available at forecast time). Fitting on
+the 2009–2011 validation years was the original design; `run infer --period validation`
+yields an empty dataset (forecast-product inputs do not assemble there), so the flood
+years provide the split. A vendored-code patch enabling validation zarr writes is
+recorded (`upstream/tester-validation-zarr.patch`) for when that path is fixed.
+
+Fit parameters (all bands reach 90% fit-window coverage without hitting the s=8 cap):
+mu 0.90–1.24, s 1.55–5.88 flow-conditional; global mu 1.08–1.14, s 1.91–2.65.
+
+Composite out-of-sample results (pooled basin-days; note: pooled-day coverage, so the
+raw values differ slightly from §4.1d's per-basin medians; samples thinned to 938):
+
+| Lead | raw cov. | global cov. | flow-cond. cov. | raw CRPS | global | flow-cond. |
+|---|---|---|---|---|---|---|
+| 0 | 0.723 | 0.929 | 0.925 | 0.901 | 0.987 | 1.003 |
+| 3 | 0.613 | 0.907 | 0.908 | 1.475 | 1.405 | 1.368 |
+| 7 | 0.462 | 0.840 | 0.840 | 2.186 | 2.022 | 1.942 |
+
+- **Coverage is recoverable**: 0.84–0.94 across leads (inside or near the 85–95% band;
+  slightly under at leads 6–7), from raw 0.46–0.73.
+- **The CRPS cost is negative beyond lead 1**: recalibration *improves* CRPS at leads
+  ≥2 (e.g., 2.19→1.94 at lead 7) because the multiplicative median correction removes
+  real conditional bias; the cost at leads 0–1 is ≤0.11 mm/day.
+- **The flow-conditional map earns its keep on high-flow days**: on top-tercile obs
+  days, raw coverage is 0.530 with 39% of observations escaping above the interval;
+  global affine reaches 0.843 (15.1% above); flow-conditional 0.859 (13.1% above) with
+  the best CRPS (3.50 vs 3.67 global, 3.85 raw). A single global affine map recovers
+  most aggregate coverage — the §4.1d prediction that *pure variance inflation* cannot
+  fix the displacement is confirmed in the mu parameters (all ≠ 1), not falsified by
+  the global map, which also shifts the median.
+- Transfer caveat: parameters fit on one AR winter transfer to the other at the
+  0.84–0.93 coverage level; both directions behave similarly.
+
 ## 5. Traps — read before trusting any number
 
 ### 5.1 CMAL run-to-run scatter — RETIRED 2026-08-14

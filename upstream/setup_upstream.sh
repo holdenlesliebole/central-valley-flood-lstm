@@ -15,6 +15,7 @@ git clone https://github.com/google-research/flood-forecasting.git \
 cd central_valley_floodforecasting
 git checkout "$PIN"
 git apply ../upstream/multimet-anon-gcs.patch
+git apply ../upstream/tester-validation-zarr.patch
 cp ../upstream/ca-basins-expanded.txt ../upstream/ca-sierra-basins.txt .
 cp ../upstream/conda-macos.yml environments/
 

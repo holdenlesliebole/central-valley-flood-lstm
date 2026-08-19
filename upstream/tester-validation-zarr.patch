@@ -1,0 +1,13 @@
+diff --git a/googlehydrology/evaluation/tester.py b/googlehydrology/evaluation/tester.py
+index 52a4c29..37d5b30 100644
+--- a/googlehydrology/evaluation/tester.py
++++ b/googlehydrology/evaluation/tester.py
+@@ -614,7 +614,7 @@ class BaseTester(object):
+             results
+             and save_results
+             and self.cfg.inference_mode
+-            and self.period == 'test'
++            and self.period in ('test', 'validation')
+         ):
+             result_file = parent_directory / f'{self.period}_results.zarr'
+ 
