@@ -524,12 +524,26 @@ Two structures inside those numbers, both verified against the forcing:
   This is §4.4's error curve (slope −0.66, ending at 0.98 of training max) continued
   beyond its last data point.
 
+**Process-model reference (2026-08-19, `make_arkstorm_srunoff.py`).** The archive's
+own Noah-MP surface runoff (`RUNOFF`, hourly 3-km) was basin-averaged with the same
+masks. SRUNOFF is unrouted and has no subsurface component, so magnitudes and timing
+are not comparable to streamflow; the supported comparison is the hist→ftr peak
+amplification, which is unit-free. Median amplification: precipitation 1.45×, **WRF
+surface runoff 2.36×** (mean 7.4×, up to 45× where the storm crosses the snow line at
+the high-elevation basins), **LSTM 1.59×**. WRF out-amplifies precipitation in 18 of
+22 basins (runoff-fraction growth); the LSTM does so in 8, never beyond 9×. Where the
+two models agree (rain-elevation basins, in-regime), ratios bracket each other at
+1.2–1.7×; where the scenario leaves the training distribution, the process model's
+response grows by an order of magnitude and the learned model's does not. Routing
+would damp the WRF ratios somewhat, which is why the claim is directional, not
+quantitative: the meteorology supports far larger amplification than the LSTM
+produces. Full table: `arkstorm_srunoff.csv`; figure `arkstorm_amplification.png`.
+
 **Interpretation limits (state wherever quoted):** no observed truth exists for a
 synthetic storm, so conclusions are structural (response scaling, ceiling proximity),
 not point verifications; WRF forcing carries its own biases relative to the training
-products; forecast slots are perfect forecasts; single seed; the WRF land-surface
-runoff (`wrf_srunoff*`, not downloaded) would provide a process-model reference for
-the same storms if wanted.
+products; forecast slots are perfect forecasts; single seed; the process-model runoff reference above shares the
+scenario's WRF biases and is unrouted.
 
 ## 5. Traps — read before trusting any number
 
