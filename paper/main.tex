@@ -433,10 +433,39 @@ storage-dominated basins. Skill at those leads also inherits directly from the f
 improvements that AR Reconnaissance flights buy in landfall forecasts pass straight
 through a weather-driven model.
 
-One concrete experiment follows from all of this and has not been run. The ARkStorm~2.0
-scenario exists as simulated meteorology \citep{huang2022climate}. Feeding that forcing
-through this trained model would measure, directly and in advance, how far a
-data-driven forecaster degrades on an event beyond its training distribution.
+That experiment has now been run (Figure~\ref{fig:ark}). The ARkStorm~2.0 meteorology
+\citep{huang2022climate} --- thirty days of simulated storm over California at 3~km,
+in a historical-climate version and a 2072 version carrying 1.45 times the water ---
+was basin-averaged over the 22 cohort basins, spliced onto a real antecedent year, and
+fed through the trained model unchanged, with the forecast inputs set to perfect
+forecasts so the result isolates the hydrologic response.
+
+In the historical-climate scenario the simulated peaks reach a median of 0.45 of each
+basin's training-record maximum, and no basin reaches its record, under a storm whose
+precipitation has no analog in the training data. Part of that is physics the model
+has evidently learned: the high-elevation basins take a February storm at $-7$\,°C and
+bank it as snowpack (Bear Creek responds at 0.11 of record). The rain-elevation basins
+carry the diagnostic signal: Mill Creek, at $+4$\,°C, peaks at 53~mm/day under daily
+precipitation comparable to what produced its 105~mm/day training record. In the 2072
+scenario the storm crosses the snow line and the high basins jump 2--9 times, more
+than the precipitation ratio; the cohort's peaks land pressed against the training
+ceiling --- median 0.91 of record, 41\% of basins just above it, none beyond 1.28
+times. A megaflood scenario read through this model produces record-adjacent flows,
+not megaflood flows. That is Finding~2's dose--response curve continued past its last
+data point, now measured on the far side of the data edge. (No observed truth exists
+for a synthetic storm, so these are structural conclusions about response scaling, not
+verified peaks; WRF forcing also carries its own biases relative to the training
+products.)
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{arkstorm_response.png}
+\caption{ARkStorm~2.0 through the trained model, lead 0, 22 basins. Left: simulated
+scenario peak / training-record maximum flow (dashed lines at 1). Right:
+ARkFuture/ARkHist simulated-peak ratio vs precipitation-total ratio; gray line is
+1:1.}
+\label{fig:ark}
+\end{figure}
 
 \finding{What this adds up to}
 

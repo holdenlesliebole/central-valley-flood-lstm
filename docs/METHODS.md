@@ -487,6 +487,50 @@ raw values differ slightly from §4.1d's per-basin medians; samples thinned to 9
 - Transfer caveat: parameters fit on one AR winter transfer to the other at the
   0.84–0.93 coverage level; both directions behave similarly.
 
+### 4.6 ARkStorm 2.0 scenario stress test (2026-08-19)
+
+`make_arkstorm_forcing.py` + `make_arkstorm_run.py`; provenance and archive detail in
+`docs/arkstorm_feasibility.md`. Design: Huang & Swain's 3-km WRF scenario meteorology
+(30 days; ARkHist and its RCP8.5 counterpart ARkFuture) is basin-averaged over the
+22-basin cohort (NLDI polygons; area ratios vs Caravan 0.94–1.10; cell-center masking)
+and spliced onto the same real 2000-10→2002-03 antecedent forcing in local
+MultiMet-format stores. Forecast slots (HRES/GraphCast leads) carry perfect forecasts;
+daily slots (ERA5-Land/CPC/IMERG) carry the scenario directly. The deterministic h128
+checkpoint runs unmodified via `run infer`. Basin-mean storm totals: 752 mm (hist) /
+1108 mm (ftr) over 30 days; daily maxima 159 / 334 mm.
+
+Results (lead 0; peaks normalized by each basin's flood-split training-record max):
+
+| Scenario | median peak / training max | basins ≥ training max | max |
+|---|---|---|---|
+| ARkHist | 0.45 | 0 of 22 | 0.88 |
+| ARkFuture | 0.91 | 9 of 22 | 1.28 |
+
+Median ftr/hist precipitation-total ratio 1.45; median simulated-peak ratio 1.59.
+
+Two structures inside those numbers, both verified against the forcing:
+
+- **Snow banking is real physics, learned.** Bear Ck takes the ARkHist storm at
+  −7.3 °C storm-day mean and responds at 0.11 of its record; the +3 °C, 1.67×-wetter
+  future storm lifts it 9.0×. The high-elevation flow ratios (2–9×) exceed the precip
+  ratio because warming moves the storm across the snow line — the same regime shift
+  as Findings 3/5, from the temperature side.
+- **Peak compression continues past the data edge.** Rain-elevation Mill Ck, where
+  snow cannot explain anything (+4 to +6 °C), peaks at 52.6 mm/day under a storm whose
+  97 mm/day daily maximum matches the forcing class that produced its 104.9 mm/day
+  training record — and at 113.4 mm/day (1.08× record) under the 129 mm/day future
+  storm. Across the cohort the ARkFuture peak distribution presses against the
+  training maximum (median 0.91, none beyond 1.28) rather than scaling with the storm.
+  This is §4.4's error curve (slope −0.66, ending at 0.98 of training max) continued
+  beyond its last data point.
+
+**Interpretation limits (state wherever quoted):** no observed truth exists for a
+synthetic storm, so conclusions are structural (response scaling, ceiling proximity),
+not point verifications; WRF forcing carries its own biases relative to the training
+products; forecast slots are perfect forecasts; single seed; the WRF land-surface
+runoff (`wrf_srunoff*`, not downloaded) would provide a process-model reference for
+the same storms if wanted.
+
 ## 5. Traps — read before trusting any number
 
 ### 5.1 CMAL run-to-run scatter — RETIRED 2026-08-14
@@ -555,6 +599,23 @@ this reason alone. Fixed with an on-disk cache (`~/data/nwis_cache`) plus retry,
 fit and the closure test read identical bytes.
 
 ---
+
+### 5.10 Scenario inference SIGABRTs on MPS; run it on CPU — 2026-08-19
+
+`run infer` on the ARkStorm stores died with a native SIGABRT (exit 134, no Python
+traceback) at a nondeterministic point — sometimes after one basin (leaving a
+partial zarr that looks like success; check `sizes['basin']`), sometimes before any.
+The identical command with `device: cpu` in the run-dir config completes all 22
+basins. Cause not isolated (Metal-side abort); the scenario job is 22 basins × 51
+days, so CPU costs nothing.
+
+### 5.11 Sequential gcsfs opens crash in one process — 2026-08-19
+
+Opening several `caravan-multimet` product zarrs in sequence in a single process
+raises an asyncio "attached to a different loop" RuntimeError partway through
+(first product succeeds). Workaround in `make_arkstorm_forcing.py`: each GCS pull
+runs in its own interpreter via subprocess, cached to netCDF. Also a reminder that
+piping a long-running build through `head` kills it with SIGPIPE mid-write.
 
 ### 5.8 `run evaluate` reports a silently-restricted basin cohort — 2026-08-14
 
