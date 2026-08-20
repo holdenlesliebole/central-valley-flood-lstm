@@ -1,8 +1,17 @@
-# Central Valley flood-forecasting LSTM — project context
+# California streamflow LSTM — project context
 
-California Sierra streamflow forecasting with Google Research's open flood-forecasting
-framework, evaluated as a trust-boundary study (five findings). Public repo:
+Daily streamflow forecasting on 28 California basins (20 rain / 8 snow by frac_snow;
+North Coast + Central Coast + Sierra/Tahoe — NOT a Central Valley or Sierra-snowmelt
+cohort) with Google Research's open flood-forecasting framework. Five-findings writeup,
+headlined by the gauge-persistence crossover. Public repo:
 github.com/holdenlesliebole/central-valley-flood-lstm.
+
+**Status: FROZEN as of 2026-08-19.** An adversarial review (`ADVERSARIAL_REVIEW.md`,
+local-only, untracked) found a multi-lead valid-date scoring bug; corrections are in
+`docs/adversarial_review_tier1_memo.md` (committed) and the regenerated outputs.
+No further research investment: no retraining, no new experiments, no capacity sweeps.
+The review's FIRO/inflow-ensemble direction is a possible future project, not
+remediation. Reopen only by Holden's explicit decision.
 
 ## Read this first
 

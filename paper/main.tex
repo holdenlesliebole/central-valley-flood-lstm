@@ -8,10 +8,10 @@
 \usepackage{microtype}
 \graphicspath{{../outputs/figures/}}
 
-\title{When can you trust an ML streamflow forecast?\\
-\large A California Sierra case study with Google's open flood-forecasting LSTM}
+\title{When does a deep-learning streamflow forecast beat the gauge?\\
+\large Google's open flood-forecasting LSTM on 28 California basins}
 \author{Holden Leslie-Bole}
-\date{2026-08-18 --- working draft for proofreading}
+\date{2026-08-19}
 
 \newcommand{\finding}[1]{\section*{#1}}
 
@@ -19,104 +19,146 @@
 \maketitle
 
 \begin{abstract}
-\noindent Most machine-learning streamflow demonstrations end at a benchmark win. This
-one starts there: on the first test window, the neural network beats a rerun of NOAA's
-operational river model. The rest of the work maps where that win stops holding; the
-boundary has five parts, and locating it produced more useful information than the win
-did. The model is a good 2-to-7-day volume forecaster for gauged basins in a hydrologic
-regime it has seen. It is not a flood-peak predictor. At 1-day lead it loses to
-yesterday's gauge reading everywhere except rain-driven basins. Held out of training, it
-failed to transfer across a regime boundary. Its predictive intervals cover 66--74\% of
-observations at a nominal 90\%. And its margin over the process model depends on the
-process model's version and on the test years. Each of those statements is a
-measurement; the sections below give the numbers.
+\noindent The right baseline for a river forecast is not the basin's mean flow. It is the
+gauge reading the operator already has. Scored against that baseline on two
+atmospheric-river flood years, a weather-driven LSTM pulls ahead at two-day lead on the
+cohort median, wins on every basin from day four, and loses on most basins at one-day
+lead. This paper measures where the model's value starts and stops against the gauge, at
+flood peaks, on a basin held out of training, in its uncertainty estimates, and against
+NOAA's process model. What emerges is a bounded region of forecast value, with the
+boundary measured on each axis.
 \end{abstract}
 
-\section*{The task, the model, and the score}
+\noindent Methods, configs, and reproduction notes: \texttt{docs/METHODS.md}.
 
-The task is short-range river forecasting. Given the weather over a mountain basin up
-through today, plus a weather forecast for the coming week, predict the daily average
-streamflow at the basin outlet for each of the next several days. Each day ahead is a
-\emph{lead}: lead 0 is an estimate of today's flow made with today's weather, lead 3 a
-three-day-ahead forecast. In California this problem matters most for the Sierra Nevada
-headwater basins that fill the Central Valley's reservoirs, where operators decide how
-much water to release ahead of incoming storms.
+\finding{The short version}
 
-The model is an LSTM, a recurrent neural network that reads one day of input at a time
-and carries a learned internal state from day to day --- in this setting, a stand-in
-for how much water the basin is holding as snowpack and soil moisture. Each day it
+The model is a good two-to-seven-day volume forecaster for gauged basins under conditions
+resembling its training data. It is not a flood-peak predictor. At one-day lead it beats
+plain gauge persistence on 9 of 22 basins and damped persistence on 4 of 22; from day 4 it
+beats both on all 22. Its raw predictive intervals capture 66--72\% of observations while
+claiming 90\%, and a simple cross-fitted calibration restores 88--91\% at essentially no
+cost in sharpness. On the largest storm days its advantage over the gauge persists but is
+thinner, arriving between day 2 and day 4 depending on the accounting. One basin, held
+entirely out of training, failed outright for reasons the experiment cannot isolate. And
+the model's margin over NOAA's process model depends on which version of that model and
+which test years are used. Each of those statements is a measurement, and the sections
+below give the numbers.
+
+\finding{The task, the model, and the score}
+
+The task is short-range river forecasting. Given the weather over a basin up through
+today, plus a weather forecast for the coming week, predict the daily average streamflow
+at the basin outlet for each of the next several days. Each day ahead is called a lead.
+Lead 0 is an estimate of today's flow made with today's weather; lead 3 is a
+three-day-ahead forecast. The operational version of this problem in California is
+reservoir inflow, meaning how much water arrives ahead of an incoming storm, and the
+two-to-seven-day leads studied here are the decision window for forecast-informed
+reservoir operations (FIRO). The basins in this study are a broader and less tidy
+population than that use case, described below.
+
+The model is an LSTM, a recurrent neural network that reads one day of input at a time and
+carries a learned internal state from day to day. In this setting that state is a stand-in
+for how much water the basin is holding as snowpack and soil moisture. Each day the model
 ingests basin-averaged precipitation and temperature from three weather products (ECMWF
-HRES forecasts, NASA's IMERG satellite precipitation, NOAA's CPC gauge analysis), plus
-a fixed vector of catchment attributes: area, elevation, climate statistics. Observed
+HRES forecasts, NASA's IMERG satellite precipitation, NOAA's CPC gauge analysis), plus a
+fixed set of catchment attributes covering area and climate statistics such as mean
+precipitation, aridity, snow fraction, and moisture and evaporative indices. Observed
 streamflow is never an input; the model runs on weather alone. Output is streamflow in
-mm/day (water depth per day spread over the basin area, which puts small and large
-basins on one scale) at leads 0 through 7. One head produces a single number per day
-and trains on mean squared error; a second produces a probability distribution and
-trains on its likelihood. The architecture and training code are Google Research's open
-flood-forecasting framework, the system behind their Flood Hub product.
+mm/day (water depth per day spread over the basin area, which puts small and large basins
+on one scale) at leads 0 through 7. One head produces a single number per day and trains
+on mean squared error; a second produces a probability distribution and trains on its
+likelihood. The architecture and training code are Google Research's open
+flood-forecasting framework, the same model family as their Flood Hub product
+\citep{nearing2024global}, though the 28-basin configuration trained here is not that
+production system.
 
-Training data are 28 California basins from Caravan \citep{kratzert2023caravan}, a
-community dataset of gauged, minimally regulated catchments drawn here from CAMELS
-\citep{newman2015camels}. Undammed basins are the point, not a limitation: the
-operational question in California is unimpaired inflow to the reservoirs, and the
-near-natural Sierra gauges measure exactly that. The streamflow records, which end in
-2014 as published, were extended through October 2024 from USGS gauge data.
+Training data are 28 minimally regulated California basins from Caravan
+\citep{kratzert2023caravan}, a community dataset of gauged catchments, drawn from the
+CAMELS subset \citep{newman2015camels}. Undammed basins are the point rather than a
+limitation. What a reservoir operator needs is unimpaired inflow, and near-natural gauges
+measure the same kind of quantity, though only some of these basins drain toward managed
+reservoirs. The cohort's geography is wider than the Sierra. By the snow-fraction rule
+used throughout this project (a basin is rain-classified below 0.3), the 28 basins split
+20 rain and 8 snow. The rain basins are dominated by North Coast river systems like the
+Eel, Smith, Trinity, Mad, and Redwood, plus six Central Coast streams. The snow basins are
+Sierra and Tahoe headwaters, including the Merced pair, Bear Creek, Pitman Creek, the
+upper Trinity, and three Tahoe-area gauges. The streamflow records, which end in 2014 as
+published, were extended through October 2024 from USGS gauge data.
+
+One property of the inputs matters for reading everything below. The forecast products
+have finite archives (HRES begins in mid-2012, GraphCast in 2016), and where they do not
+exist the pipeline fills their slots with ERA5-Land reanalysis shifted to the target date.
+That is realized weather standing in for a forecast of it. Training on 1985--2016
+therefore ran almost entirely with perfect future weather in the forecast channels, while
+the flood test years run on real forecasts. The model learns under easier conditions than
+it is tested on, and any comparison across eras, like the drought window below or the 1997
+flood, mixes hydrology with forecast realism.
 
 Forecasts are scored by NSE, the Nash--Sutcliffe efficiency, hydrology's standard skill
-score: 1 is a perfect match to observations, 0 means no more accurate than always
-predicting the basin's mean flow, and negative values are worse than that constant.
+score. A score of 1 is a perfect match to observations, 0 means no more accurate than
+always predicting the basin's mean flow, and negative values are worse than that constant.
 
-\section*{The test}
+\finding{The test}
 
-The held-out test years are water years 2017 and 2023 (a \emph{water year} runs
-October through September and is named for its end). Both were flood years built from
-atmospheric rivers, the narrow plumes of Pacific vapor that deliver most of
-California's large storms. The WY2017 sequence damaged both spillways at Oroville Dam
-and forced the evacuation of nearly 190{,}000 people downstream; WY2023 brought the
-December--January storm train that ended a three-year drought. Training uses every
-remaining day in the record outside these windows and the 2009--2011 validation years,
-and checkpoints are selected on validation skill, never taken from the last epoch. Of
-the 28 trained basins, 22 have observations in the flood windows (Figure~\ref{fig:map}).
-Medians below are over that fixed cohort, except in Finding~5, where the comparison
-covers five focus basins.
+The test years are water years 2017 and 2023 (a water year runs October through September
+and is named for the year it ends in). Both were flood years built from atmospheric
+rivers, the narrow plumes of Pacific vapor that deliver most of California's large storms.
+The WY2017 sequence damaged both spillways at Oroville Dam and forced the evacuation of
+nearly 190{,}000 people downstream; WY2023 brought the December--January storm train that
+ended a three-year drought. Training uses every remaining day in the record outside these
+windows and the 2009--2011 validation years, and checkpoints are selected on validation
+skill, never taken from the last epoch. Of the 28 trained basins, 22 have observations in
+the flood windows. Medians below are over that fixed cohort, except in Finding~5, where
+the comparison covers five focus basins (four snow-classified, one rain).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.78\textwidth]{study_map.png}
-\caption{The 28 training basins. Marker color: fraction of precipitation falling as
-snow (Caravan attribute). Rings: the five focus basins. Crosses: the six basins with no
-observations in WY2017 or WY2023, excluded from cohort medians. Triangle: Oroville Dam.}
+\caption{The 28 configured basins, colored by Caravan snow fraction. Circles are the
+22-basin evaluation cohort; crosses are the six with no observations in the flood windows.
+Twenty basins are rain-classified and eight snow-classified under the project's
+\texttt{frac\_snow} $<$ 0.3 rule.}
 \label{fig:map}
 \end{figure}
 
-The choice of test period is itself the first result. Tested on 2012--2014, the onset
-of California's drought, the model scores a median NSE of 0.862; tested on the two
-flood years, the same architecture at the same capacity on the same 22 basins scores
-0.754 (0.836 and 0.679 at a smaller capacity). The flood-year model trains on eleven
-more years of data, so the gap is a lower bound on the window effect. Neither number is
-wrong. A streamflow skill claim that omits the hydrologic character of its test years
-is a claim about the years.
+Two qualifications attach to this design. First, WY2017 and WY2023 are challenge years
+rather than untouched tests. They were chosen for their extremity, and their results have
+steered model capacity, the probabilistic analysis, and the narrative across this
+project's development. Second, the train/test split is contiguous on forecast issue dates
+with a seven-day horizon, so 28 calendar dates, all in the first week of October at the
+window seams, are labels in both a training and a test sample. That touches 1.9\% of
+scored rows, concentrated in reliably low-flow early October, so the numerical effect on
+any median is almost certainly negligible. But held out should mean held out, and a
+multi-day horizon needs a purged split. The overlap is quantified in the project's
+split-leakage table rather than waved off.
 
-\finding{Finding 1 --- The baseline that matters is a gauge, not a mean}
+The choice of test period is itself the first result. Tested on 2012--2014, the onset of
+California's drought, this architecture scores a median NSE of 0.862; tested on the two
+flood years, it scores 0.754 (0.836 and 0.679 at a smaller capacity). Those two numbers
+come from separately trained models with different training years, different checkpoints,
+and, per the note on inputs above, different forecast realism, so the gap is descriptive
+rather than an isolated window effect. Neither number is wrong. A streamflow skill claim
+that omits the hydrologic character of its test years is a claim about the years.
 
-NSE's built-in null, the basin's mean flow, is weak. Two stronger nulls, scored on the
-identical test set and metric definitions and matched by forecast lead:
-\emph{persistence} (the gauge reading from $k$ days ago carried forward) and
-\emph{damped persistence} (the last reading relaxed toward the seasonal cycle at the
-basin's fitted day-to-day autocorrelation). The train-period mean scores $-0.08$ and
-the raw seasonal cycle $+0.20$; neither is competitive at short leads
-(Table~\ref{tab:persistence}, Figure~\ref{fig:crossover}).
+\finding{Finding 1: The baseline that matters is a gauge, not a mean}
+
+NSE's built-in baseline, the basin's mean flow, is weak. Two stronger ones were scored on
+the identical test set and metric definitions, matched by forecast lead. Persistence
+carries the gauge reading from $k$ days ago forward unchanged. Damped persistence relaxes
+that last reading toward the seasonal cycle at the basin's fitted day-to-day
+autocorrelation. The train-period mean scores $-0.08$ and the raw seasonal cycle $+0.20$,
+so neither is competitive at short leads.
 
 \begin{table}[htbp]
 \centering
-\caption{Median NSE by forecast lead (days), WY2017+WY2023 test set. Bold marks the
-winner per cohort.}
+\caption{Median NSE by forecast lead, 22-basin cohort and the five focus basins.}
 \label{tab:persistence}
-\begin{tabular}{lcccccc}
+\begin{tabular}{rrrrrrr}
 \toprule
- & \multicolumn{3}{c}{22-basin cohort} & \multicolumn{3}{c}{5 snowmelt focus basins} \\
+& \multicolumn{3}{c}{22-basin cohort} & \multicolumn{3}{c}{5 focus basins} \\
 \cmidrule(lr){2-4}\cmidrule(lr){5-7}
-Lead (d) & LSTM & Persist. & Damped & LSTM & Persist. & Damped \\
+Lead (days) & LSTM & Persist. & Damped & LSTM & Persist. & Damped \\
 \midrule
 1 & 0.667 & 0.712 & \textbf{0.738} & 0.810 & 0.944 & \textbf{0.945} \\
 2 & \textbf{0.688} & 0.484 & 0.566 & 0.810 & \textbf{0.864} & 0.869 \\
@@ -127,364 +169,341 @@ Lead (d) & LSTM & Persist. & Damped & LSTM & Persist. & Damped \\
 \end{tabular}
 \end{table}
 
+At one day ahead the gauge is the better forecast on most basins. The LSTM beats plain
+persistence on 9 of 22 and damped persistence on 4 of 22. Persistence decays with lead
+while the LSTM's skill stays nearly flat, so the curves cross, with the cohort median
+crossing at day 2, 17 of 22 basins by day 2, 21 by day 3, and all 22 from day 4. The
+high-storage focus basins cross later, at day 3 against plain persistence and day 4
+against damped. The rain-classified focus basin, Mill Creek, is the exception in the other
+direction. The LSTM wins there at every lead (0.618 against 0.594 damped at day 1),
+because persistence has no skill for flashy rain response.
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{persistence_crossover.png}
-\caption{Median NSE vs forecast lead (days), WY2017+WY2023 test set: LSTM, lag-$k$
-gauge persistence, and damped persistence. Left: 22-basin cohort. Right: five snowmelt
-focus basins. Dotted lines mark the lead where the LSTM median first exceeds each null.}
+\caption{Median NSE against forecast lead for the LSTM, plain gauge persistence, and
+damped persistence, matched lead for lead. Left: 22-basin cohort. Right: the five focus
+basins, four snow-classified and one rain.}
 \label{fig:crossover}
 \end{figure}
 
-At one day ahead the gauge beats the model nearly everywhere. Persistence decays with
-lead while the LSTM's skill stays nearly flat, so the curves cross: at day 2 across the
-cohort against both nulls, and on the high-storage snowmelt focus basins at day 3
-against plain persistence and day 4 against damped persistence. The exception is the
-rain-driven basin, where the LSTM wins at every lead (0.618 against 0.594 damped at
-day 1); persistence has no skill for flashy rain response.
+Splitting the same comparison by storm size asks the question an operator would ask. Does
+the day-2 advantage hold when it matters? On total error it does, at about a third of the
+overall margin. MAE skill against plain persistence at lead 2 is $+0.06$ in the two top
+storm bins against $+0.17$ pooled, growing to $+0.29$ to $+0.36$ by lead 7. Counting days
+instead of totals, the advantage arrives later. Above the 95th storm percentile the LSTM
+wins a bare majority of days from lead 2 (0.52, rising to 0.70 by lead 7), while in the
+80th-to-95th band it wins fewer than half until lead 4. The early total-error advantage
+comes from avoiding a few very large persistence misses rather than from being routinely
+better. The rising skill at long leads is also persistence collapsing rather than the LSTM
+improving. In the top bin the LSTM's error is nearly flat with lead, 10.9 to 10.8 mm/day
+against a bin average of 17.1, while plain persistence degrades from 10.1 to 15.1. Both
+are poor on extreme days; the learned model is less poor. One baseline does not fit all
+conditions, either. Damped persistence, the stronger baseline on average, is the weaker
+one in storms, because relaxing toward climatology is exactly wrong on a storm day. The
+stratified table therefore scores against whichever baseline is stronger in each bin.
 
-The information asymmetry runs in both directions. The LSTM never sees observed
-discharge, and persistence is built from a gauge reading the model is denied; a real
-flood operator has that gauge. In the other direction, the LSTM sees forecast
-meteorology through the target day, so at day 1 it loses to a naive gauge reading while
-holding information about tomorrow's storm that persistence lacks. Both halves point at
-the same next architecture: take both inputs, and assimilate the gauge.
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{storm_stratified_persistence.png}
+\caption{MAE skill score against gauge persistence by storm-size bin and lead, WY2017 and
+WY2023, 22-basin cohort. Above zero the LSTM has the lower error. The advantage in the top
+storm bins is smaller than the pooled value at every lead.}
+\label{fig:stormpers}
+\end{figure}
 
-The seasonal-cycle null carries its own lesson. It scored $-0.25$ on the 2012--2014
+The information asymmetry runs in both directions. The LSTM never sees observed discharge,
+so persistence is built from a gauge reading the model is denied, and a flood operator has
+that gauge. In the other direction, the LSTM sees forecast weather through the target day,
+so at day 1 it loses to a naive gauge reading while holding information about tomorrow's
+storm that persistence lacks. That loss is concentrated on quiet days, where MAE skill is
+$-0.46$ against $-0.08$ to $-0.15$ in the storm bins. The gauge is nearly unbeatable on a
+calm day and merely better in a storm. Both halves point at the same next architecture,
+which is to take both inputs and assimilate the gauge.
+
+The seasonal-cycle baseline carries its own lesson. It scored $-0.25$ on the 2012--2014
 drought window and $+0.198$ on the flood years. A baseline's value is a property of the
 test period, not of the baseline.
 
-\finding{Finding 2 --- The model gets \emph{when}, not \emph{how big}}
+\finding{Finding 2: The model gets \emph{when}, not \emph{how big}}
 
-On the held-out flood years the deterministic model scores NSE 0.754 and times peaks to
-about one day, while missing their size: high-flow volume bias (\emph{FHV}, the bias
-over the top 2\% of the flow-duration curve) is $-19\%$, roughly 45\% of peaks are
-missed, and peak magnitude error is near 48\% (Figure~\ref{fig:hydrographs}). Peak
-counts come from a few events per basin over two water years, so the peak rows are
+On the flood years the deterministic model scores NSE 0.754 and puts peaks within about a
+day of the observed timing, while missing their size. High-flow volume bias, the bias over
+the top 2\% of the flow-duration curve (FHV), is $-19\%$; roughly 45\% of peaks are
+missed; and peak magnitude error is near 48\%. Two cautions attach to the timing number. A
+daily-mean series cannot resolve sub-daily peak timing at all, and the weather inputs are
+aggregated on UTC days while USGS gauges aggregate on local days, a mismatch that can
+contribute up to a day by itself. ``About a day'' is the resolution limit, not precision.
+Peak counts come from a few events per basin over two water years, so the peak rows are
 coarse. For flood operations, where the decision is how much water to release before a
 storm arrives, the magnitude is the operative quantity.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{flood_hydrographs.png}
-\caption{Daily observed and simulated (lead-0) streamflow, mm/day, five focus basins,
-WY2017. Annotations give the observed peak in mm/day.}
+\caption{Observed and simulated daily flow for the focus basins in the held-out WY2017
+window. Timing tracks; magnitude does not.}
 \label{fig:hydrographs}
 \end{figure}
 
-The failure is not specific to machine learning. On a separately held-out extreme
-(January 1997, with the entire 1990s excluded from training) the LSTM and the NOAA
-process model both underestimated the flood peak by tens of percent, and on the
-rain-driven basin the process model came far closer. Two caveats attach to
-1997: it predates the forecast-era forcing products, so the LSTM ran on degraded inputs
-there, and peak underestimation at this level is close to the state of the art for both
-model families.
+The failure is not specific to machine learning. On a separately held-out extreme (January
+1997, with the entire 1990s excluded from training) the LSTM and the NOAA process model
+both underestimated the flood peak by tens of percent, and on the rain-driven basin the
+process model came far closer. A caveat cuts against the LSTM there. 1997 predates the
+forecast-product archives, so the model ran with reanalysis standing in for its forecast
+inputs. That is realized future weather, which flatters the model rather than handicapping
+it. Peak underestimation at this level is close to the state of the art for both model
+families.
 
-A capacity experiment sharpens the point. Raising the LSTM's hidden size from 16 to 128 improved
-average skill (NSE 0.679 to 0.754) and degraded the peaks: FHV moved from $-12\%$ to
-$-19\%$ and missed peaks from 0.33 to 0.45. Added capacity bought accuracy on the bulk
-of the flow distribution and paid for it in the tail, consistent with regression toward
-the mean on out-of-distribution extremes. One training run per capacity, so this is a
-consistent gradient rather than a seed-controlled result.
+A capacity experiment sharpens the point. Raising the LSTM's hidden size from 16 to 128
+improved average skill (NSE 0.679 to 0.754) and degraded the peaks, moving FHV from
+$-12\%$ to $-19\%$ and missed peaks from 0.33 to 0.45. Added capacity bought accuracy on
+the bulk of the flow distribution and paid for it in the tail, consistent with regression
+toward the mean on out-of-distribution extremes. One training run per capacity, so this is
+a consistent gradient rather than a seed-controlled result.
 
-The location of the misses is measurable. Binning the 15{,}907 test basin-days by each
-basin's own wet-day precipitation climatology
-(Figure~\ref{fig:storm}): bias stays within $\pm 2\%$ of zero for storms up to the
-80th percentile, then breaks. Above the 95th percentile the model under-predicts flow
-by 52\% and runs low on 84\% of days. The error is not spread across the flow
-distribution; it is concentrated in the top fifth of storms.
+The location of the misses is measurable. Binned by each basin's own wet-day precipitation
+climatology, the 15{,}907 test basin-days show same-day bias within $\pm 2\%$ of zero for
+storms up to the 80th percentile, and then it breaks. Above the 95th percentile the model
+under-predicts flow by 52\% and runs low on 84\% of days. At three-day lead, scored
+against conditions on the storm's actual arrival day, the same structure is starker, with
+$-30\%$ bias in the 80th-to-95th-percentile bin and $-61\%$ above the 95th,
+under-predicting on 88\% of days. The error is not spread across the flow distribution. It
+is concentrated in the top fifth of storms. At those extremes it is a magnitude problem
+rather than a horizon problem. The model's error in the top storm bin is nearly identical
+at one-day and seven-day lead, so a better weather forecast would not fix it; this is
+regression toward the mean, visible at every horizon at once.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{storm_stratified_skill.png}
-\caption{Skill by storm-size bin (percentile of each basin's wet-day precipitation
-climatology; ERA5-Land forcing), WY2017+WY2023, leads 0 and 3. Left: relative bias,
-mean(sim$-$obs)/mean(obs). Right: fraction of basin-days with sim $<$ obs; dashed line
-at 0.5.}
+\caption{Bias and under-prediction frequency by storm-size bin, at same-day and three-day
+lead. Each lead is scored at its own valid date, so the three-day rows are conditioned on
+the storm's arrival day.}
 \label{fig:storm}
 \end{figure}
 
-The same structure appears event by event (Figure~\ref{fig:peakcurve}). Across 281
-observed flow peaks in the test windows, the median miss deepens with event size:
-$-13\%$ for peaks below a quarter of the basin's training-record maximum flow, $-26\%$
-and $-33\%$ in the middle bins, $-72\%$ for the three events that approach the
-training maximum (Theil--Sen slope $-0.66$ per unit of normalized magnitude). No test
-event exceeds the training maximum, so these curves measure the approach to the edge of
-the training distribution. Beyond that edge there is no data, which is the case for the
-scenario experiment in ``The winter everyone is watching.''
+An event-level diagnostic points the same way, and is offered as direction rather than
+slope. Across 281 observed flow peaks in the test windows, the median miss deepens with
+event size, from $-13\%$ for peaks below a quarter of the basin's training-record maximum,
+through $-26\%$ and $-33\%$ in the middle bins, to $-72\%$ in the top bin. Three caveats
+keep this exploratory. The top bin holds only three events; events cluster by basin and
+storm sequence, so they are not independent; and the observed peak enters both axes, which
+can push the slope negative by construction. The storm-percentile bins above share none of
+those problems and carry the load-bearing version of the claim.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.9\textwidth]{peak_error_curve.png}
-\caption{Relative peak error, (sim$-$obs)/obs, vs observed peak magnitude normalized
-by the basin's training-record maximum flow. 281 events, 22 basins, WY2017+WY2023.
-Points colored by regime; black markers: binned medians; dashed: Theil--Sen fit
-(slope $-0.66$).}
+\caption{Relative peak error against event magnitude, normalized by each basin's
+training-record maximum flow. Exploratory: the top bin holds three events and the observed
+peak appears in both axes.}
 \label{fig:peakcurve}
 \end{figure}
 
-\finding{Finding 3 --- It regionalizes within a regime and inverts across one}
+\finding{Finding 3: A held-out basin failed, and the experiment cannot say why}
 
 Most basins have no gauge, so ungauged prediction is the version of this problem water
-agencies actually face. Holding each focus basin entirely out of training: Bear Ck
-(snowmelt) drops to NSE 0.646 with high-flow bias $-29\%$; Pitman Ck (snowmelt) to
-0.375 with $-62\%$; Mill Ck, the rain-driven basin, to $-0.740$ with the bias flipped
-to $+80\%$ (Figure~\ref{fig:lobo}). The snowmelt basins degrade. Mill Ck inverts,
+agencies face. Holding each focus basin entirely out of training, Bear Creek
+(snow-classified) drops to NSE 0.646 with high-flow bias $-29\%$, Pitman Creek
+(snow-classified) to 0.375 with $-62\%$, and Mill Creek, the rain-classified basin, to
+$-0.740$ with the bias flipped to $+80\%$. The snow basins degrade. Mill Creek inverts,
 scoring worse than the observed mean while over-predicting the flows it used to
 under-predict.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{lobo_millck_inversion.png}
-\caption{Daily streamflow (mm/day) at Mill Ck, 2022-10 to 2023-06: observations, the
-28-basin model (Mill Ck in training), and the leave-one-basin-out model (Mill Ck
-excluded). NSE values in the legend are computed over WY2017+WY2023.}
+\caption{Mill Creek in WY2023, simulated by the model trained on all 28 basins and by the
+model with Mill Creek held out. NSE values in the legend are computed over both flood
+water years.}
 \label{fig:lobo}
 \end{figure}
 
-The mechanism is regime extrapolation. Trained on 27 mostly-snowmelt catchments, the
-model learned a snowmelt mapping and applied it to a rain-driven catchment it had never
-seen. One basin carries this result (Mill Ck is the only rain-driven basin in the set),
-so it is a demonstration rather than a statistic, and it reflects the 27-basin,
-regime-homogeneous training set: published regionalization successes rest on hundreds
-of hydrologically diverse basins \citep{kratzert2019regional,nearing2024global}, and
-the diversity is what does the work. The remedy is training-set diversity rather than
-architecture. The operational lesson survives either way: a regional model extrapolates
-its regime onto basins that do not share it, and nothing in its outputs announces that
-it is doing so.
+What this experiment does not establish is why. An earlier version of this work called it
+regime transfer, a model trained on snowmelt applied to rain, and the training population
+contradicts that story. The 27 basins remaining after Mill Creek is held out are 19
+rain-classified and 8 snow-classified, and Mill Creek's own snow fraction of zero is
+shared by eighteen other basins in the set. One held-out basin cannot separate the
+candidate explanations, which include basin attributes, catchment scale,
+precipitation-to-flow timing, differences in the record extension, spatial extrapolation,
+and single-seed training variance. Published regionalization successes rest on hundreds of
+hydrologically diverse basins \citep{kratzert2019regional,nearing2024global}, and naming a
+mechanism here would take leave-cluster-out tests across several basin groups rather than
+one basin.
 
-(Two further basins, the nested Merced pair, scored 0.857 and 0.790 in the same
-experiment. Each has its nested partner in the training set, which leaks the
-hydrograph, so they are excluded from the ungauged claim.)
+The operational lesson survives the demolished explanation. A regional model can fail
+completely on a basin it has never seen, and nothing in its outputs announces that it is
+doing so. Skill on the training cohort said nothing about Mill Creek.
 
-\finding{Finding 4 --- Sharper, and overconfident}
+Two further basins, the nested Merced pair, scored 0.857 and 0.790 in the same experiment.
+Each has its nested partner in the training set, which leaks the hydrograph, so they are
+excluded from the ungauged claim.
 
-The distributional head emits a full probability distribution for each day's flow in
-place of a single number. \emph{CRPS} (continuous ranked probability score) makes the
-comparison to the deterministic head fair \citep{gneiting2007strictly}: for a
-single-number forecast CRPS reduces exactly to absolute error, so both heads are scored
-by one proper rule (the fair finite-ensemble estimator; \citealp{ferro2014fair}) and
-the distribution wins only if its spread carries information. It does: CRPS (in mm/day)
-drops from 1.231 to 0.916 at the same-day nowcast, 1.452 to 1.081 at three days, and
-1.550 to 1.185 at seven, a 22--26\% reduction at every lead. The distributional head
-also edges the deterministic one on point metrics (NSE 0.784 against 0.754, fewer
-missed peaks, smaller peak error, some loss in KGE).
+\finding{Finding 4: Sharper, and overconfident}
 
-The intervals, however, are not calibrated: a nominal 90\% predictive interval covers
-66--74\% of observations, so the sharper forecast is also overconfident, which for an
-operator is the dangerous direction (Figure~\ref{fig:calibration}). The rank histogram
-locates the failure (Figure~\ref{fig:pit}). In aggregate it is U-shaped and nearly symmetric, with
-22\% of observations above the ensemble's 90th percentile rank and 20\% below the 10th,
-the signature of plain under-dispersion. Conditioned on flow, the two tails separate:
-at high flows the observation escapes above the interval (23\% above, 3\% below), and
-at low flows it escapes below (23\% below, 9\% above). The predictive distribution is
-displaced toward the middle of the flow distribution at both ends, regression toward
-the mean in distributional form. A separate heavy-tail pathology (rare extreme samples
-that inflate the ensemble standard deviation to about $3\times$ the RMSE) accounts for
-the spread/skill ratio and the NaN training losses, and does not account for the
-coverage failure.
+The distributional head emits a full probability distribution for each day's flow in place
+of a single number. The continuous ranked probability score (CRPS) makes the comparison to
+the deterministic head fair \citep{gneiting2007strictly}. For a single-number forecast CRPS
+reduces exactly to absolute error, so both heads are scored by one proper rule, in the fair
+finite-ensemble form \citep{ferro2014fair}, and the distribution wins only if its spread
+carries information.
+
+\begin{table}[htbp]
+\centering
+\caption{Median CRPS (mm/day) over the 22-basin cohort. Lower is better.}
+\label{tab:crps}
+\begin{tabular}{rrrr}
+\toprule
+Lead (days) & Distributional & Deterministic & Improvement \\
+\midrule
+0 (same-day) & 0.916 & 1.231 & \textbf{26\%} \\
+3 & 1.081 & 1.452 & \textbf{26\%} \\
+7 & 1.185 & 1.550 & \textbf{24\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The spread does carry information, a 22--26\% CRPS reduction at every lead. The
+distributional head also edges the deterministic one on point metrics (NSE 0.784 against
+0.754, fewer missed peaks, smaller peak error, some loss in KGE).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{crps_calibration.png}
-\caption{Left: median CRPS (mm/day) vs lead for the distributional and deterministic
-heads. Right: empirical coverage of the nominal 90\% predictive interval vs lead; the
-shaded band is the pre-specified 85--95\% acceptance range.}
+\caption{Left: CRPS against lead for both heads. Right: empirical coverage of the nominal
+90\% predictive interval against lead, as a median over per-basin coverages.}
 \label{fig:calibration}
 \end{figure}
+
+The intervals, however, are not calibrated. An interval that claims 90\% coverage captures
+66--72\% of observations, nearly uniformly across leads 0 through 7. The sharper forecast
+is also overconfident, which for an operator is the dangerous direction. The rank
+histogram, computed on the 15{,}907 same-day basin-days, locates the failure. In aggregate
+it is U-shaped and nearly symmetric, with 22\% of observations above the ensemble's 90th
+percentile rank and 20\% below the 10th, the signature of plain under-dispersion.
+Conditioned on flow, the two tails separate. At high flows the observation escapes above
+the interval (23\% above, 3\% below), and at low flows it escapes below (23\% below, 9\%
+above). The predictive distribution is displaced toward the middle of the flow
+distribution at both ends, which is regression toward the mean in distributional form. A
+separate heavy-tail pathology, in which rare extreme samples inflate the ensemble standard
+deviation to about three times the RMSE, accounts for the spread/skill ratio and the NaN
+training losses, and does not account for the coverage failure.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.62\textwidth]{pit_histogram.png}
-\caption{Rank histogram (PIT) of observations within the 7500-member predictive
-ensemble, all basins, lead 0. Dashed line: the uniform density of a calibrated
-ensemble.}
+\caption{Rank histogram of the observation within the predictive ensemble, all basins,
+lead 0. The dashed line is the uniform density of a calibrated ensemble.}
 \label{fig:pit}
 \end{figure}
 
-The remedy has now been tested, with a design that doubles as a transfer experiment
-(Figure~\ref{fig:recal}): an affine correction of the ensemble (a median shift and a
-spread scale, fit per band of predicted flow) learned on one flood water year and
-applied to the other, so every reported number is out-of-sample. Coverage recovers
-from 0.46--0.73 to 0.84--0.93 across leads, and the feared CRPS cost does not
-materialize: beyond one-day lead the correction \emph{improves} CRPS (2.19 to 1.94
-mm/day at seven days), because removing the conditional median bias is worth more than
-the widened intervals cost. The flow-conditional version shows its value where the
-failure lived: on the highest-flow third of days, raw coverage is 0.53 with 39\% of
-observations escaping above the interval; the flow-conditional map reaches 0.86 with
-13\% above, beating a single global correction on both coverage and CRPS there.
-Calibration remains slightly under target at six-to-seven-day leads (0.84 against the
-0.85--0.95 band), and a correction fit on one atmospheric-river winter held in a
-different one --- the transfer an operational deployment would need.
+A correction has been tested, with a design that doubles as a transfer experiment. The
+method, cross-fitted affine calibration, is a median shift and a spread scale fit per band
+of predicted flow, learned on one flood water year and applied to the other, so every
+reported number is out-of-sample. Coverage recovers from 0.66--0.72 raw to 0.88--0.91 at
+every lead, inside the target band, and the cost in sharpness is essentially nil. The
+flow-conditional map leaves CRPS unchanged at same-day (0.901 raw, 0.900 corrected) and
+gains about 1\% at seven days (1.209 to 1.196), while a single global correction costs
+0.00--0.04 mm/day of CRPS at every lead. On the highest-flow third of days, where the
+failure lived, raw coverage is 0.70 with 26\% of observations escaping above the interval.
+The flow-conditional map reaches 0.85 there with 12\% above and the best CRPS of the three
+variants (2.78, against 2.89 global and 2.85 raw), though the global map achieves higher
+coverage (0.89). A correction fit on one atmospheric-river winter held in a different one,
+which is the transfer an operational deployment would need.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{recalibration.png}
-\caption{Coverage (left) and fair CRPS (right) by lead on the flood test years: raw
-ensemble vs global and flow-conditional affine recalibration, each window scored with
-parameters fit on the other window. Shaded band: 85--95\% acceptance range.}
+\caption{Coverage and fair CRPS against lead on the flood test years for the raw ensemble
+and two affine corrections, each water year scored with parameters fit on the other.}
 \label{fig:recal}
 \end{figure}
 
-\finding{Finding 5 --- The benchmark win depends on the benchmark}
+An earlier version of this section claimed more, with raw intervals collapsing to 0.46
+coverage at day 7 and a recalibration that improved CRPS by 11\% at long leads. Both
+numbers were artifacts of a scoring bug, in which multi-lead forecasts were paired with
+observations from the issue date rather than the target date. An adversarial review of
+this project found it, and the numbers were corrected on 2026-08-19; the last section has
+the anatomy. The surviving story is less dramatic and more useful. The raw intervals
+under-cover by a roughly constant margin at all leads, and an affine correction fixes
+coverage without paying for it in sharpness.
 
-The comparison model is the NOAA National Water Model (NWM), the continental-scale
-process simulation behind federal streamflow guidance, evaluated through its
-\emph{retrospectives}: reruns over past decades driven by observed weather rather than
-forecasts. On the 2012--2014 window the LSTM beat the v2.1 retrospective on every focus
-basin, median NSE 0.83 against 0.53 --- the comparison that motivated this project.
-Rerun on the flood years, against v2.1 and the current v3.0 (Table~\ref{tab:nwm},
-Figure~\ref{fig:nwm}):
+\finding{Finding 5: The benchmark win depends on the benchmark}
+
+The comparison model is the NOAA National Water Model (NWM), the continental-scale process
+simulation behind federal streamflow guidance. A protocol note belongs ahead of any
+number. The comparison uses NWM retrospectives, which are reruns over past decades driven
+by observed weather with no gauge assimilation, against the LSTM's same-day hindcast. This
+is a simulation-to-simulation comparison, not operational forecast skill. The operational
+NWM assimilates gauges and would be a different opponent.
+
+On the 2012--2014 window the LSTM beat the v2.1 retrospective on every focus basin, median
+NSE 0.83 against 0.53, which is the comparison that motivated this project. Rerun on the
+flood years, against v2.1 and the current v3.0:
 
 \begin{table}[htbp]
 \centering
-\caption{Focus-basin medians on the flood windows. The v3.0 retrospective ends
-2023-02-01, so its WY2023 window is October--January.}
+\caption{LSTM against two NWM retrospective versions on the flood windows, five focus
+basins.}
 \label{tab:nwm}
-\begin{tabular}{lccc}
+\begin{tabular}{lrrr}
 \toprule
 Window & LSTM & NWM v2.1 & NWM v3.0 \\
 \midrule
 WY2017, median NSE & 0.772 & 0.628 & \textbf{0.848} \\
-WY2017, high-flow bias & $-20\%$ & $-2\%$ & $\mathbf{-5\%}$ \\
+WY2017, high-flow bias & $-20\%$ & $-2\%$ & \textbf{$-5\%$} \\
 WY2023 (Oct--Jan), median NSE & \textbf{0.443} & --- & 0.162 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+On WY2017 the modern NWM beats the LSTM on median skill, winning three of five basins,
+with far smaller high-flow bias and peak error; a large share of the original margin was
+the NWM version rather than the physics. On the partial WY2023 window (the v3.0
+retrospective ends 2023-02-01, covering the December--January storm sequence and missing
+the March storms) the LSTM wins on median skill, and both systems underestimate high flows
+by 53--55\%.
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{lstm_vs_nwm_flood.png}
-\caption{Per-basin NSE, LSTM vs NWM retrospectives. Left: WY2017 (v2.1 hatched, v3.0
-solid). Right: 2022-10 to 2023-01 (v3.0). Bars clipped at $-0.55$.}
+\caption{Per-basin NSE for the LSTM and the two NWM retrospective versions on the flood
+windows.}
 \label{fig:nwm}
 \end{figure}
 
-A protocol note: retrospectives are analysis-forced, open-loop simulations, compared
-here against the LSTM's same-day hindcast. This is a simulation-to-simulation
-comparison, not operational forecast skill, and the operational NWM additionally
-assimilates gauges.
-
-On WY2017 the modern NWM beats the LSTM on median skill, winning three of five basins,
-with far smaller high-flow bias and peak error; a large share of the original margin
-was the NWM version rather than the physics. On the partial WY2023 window (the v3.0
-retrospective ends 2023-02-01, covering the December--January AR sequence and missing
-the March storms) the LSTM wins on median skill, and both systems underestimate high
-flows by 53--55\%.
-
 Two structural results are stable in every window tested. The LSTM wins Bear Creek
 decisively in both flood years (0.92 and 0.77, against at best 0.07), a high-elevation,
-high-storage snowmelt basin where the NWM's snow physics reliably fails. The process
-model wins rain-driven flood peaks (Mill Creek: 0.90 against 0.74 in WY2023, with the
-same signature in 1997), where explicit routing preserves what regression toward the
-mean smooths away.
+high-storage snow basin where the NWM's snow physics reliably fails. The process model
+wins rain-driven flood peaks (Mill Creek scores 0.90 against 0.74 in WY2023, with the same
+signature in 1997), where explicit routing preserves what regression toward the mean
+smooths away.
 
-``ML beats the operational model'' is therefore a claim indexed by model version, test
-years, and hydrologic regime. The result that survives the indexing is complementarity:
-each model dominates where the other's structure fails.
+``ML beats the process model'' is therefore a claim indexed by model version, test years,
+and hydrologic regime. The result that survives the indexing is complementarity. Each
+model dominates where the other's structure fails.
 
-\finding{The winter everyone is watching}
+\finding{A note on the winter ahead}
 
-As of August 2026, NOAA's Climate Prediction Center reports El Ni\~no conditions in
-place, with better than 90\% odds of a very strong event this winter and roughly 60\%
-odds of a peak at ``super'' magnitude \citep{cpc2026enso}. Press coverage has spent the
-summer asking whether 2026--27 could produce an ARkStorm: the hypothetical month-long
-train of atmospheric rivers that the USGS built as a planning scenario
-\citep{porter2011arkstorm}, and that \citet{huang2022climate} found roughly twice as
-likely in the current climate as in the preindustrial one. Work published this year by
-CW3E, the atmospheric-rivers center at Scripps, reaches a consistent conclusion by a
-different route: precipitation events of the January 1997 class, the same flood held
-out in Finding~2, are projected to become about twice as likely by late century
-\citep{gershunov2025atmospheric}. Against that backdrop, the five findings translate
-into statements about a specific winter.
+Written in August 2026. This section will age; the findings above should not.
 
-Two constraints frame the translation. El Ni\~no shifts the odds without determining
-the outcome; the wettest year in this record, WY2023, arrived during La Ni\~na. What a
-strong El Ni\~no does change with some reliability is storm character, favoring a
-southward-shifted subtropical jet and warmer atmospheric rivers with high snow levels:
-more rain falling on basins that usually take snow.
-
-The peak problem gets worse, not better, and the rate is now measured
-(Figures~\ref{fig:storm} and \ref{fig:peakcurve}). Bias is near zero below the 80th
-storm percentile, $-52\%$ above the 95th; across 281 events the median peak miss
-deepens from $-13\%$ to $-72\%$ as events approach the largest flow in the training
-record, and the capacity experiment indicates that larger networks regress harder. An
-ARkStorm-class sequence sits beyond the training maximum entirely, in the region where
-the measured curve runs out of data while still steepening.
-
-Warm storms move basins across the regime boundary from Finding~3. High snow levels
-turn snowmelt catchments into temporary rain catchments, the direction in which the
-Mill Creek inversion and the NWM's peak wins both point. In this scenario the
-complementarity result reads as operational advice: run both model families, and weight
-the process model's peak estimates.
-
-The calibration failure lands exactly where such a winter would be lived, and it is
-the one boundary that has now been moved. Raw, the intervals miss above the interval
-seven times more often than below at high flows; recalibrated flow-conditionally (fit
-on one AR winter, tested on the other), high-flow coverage rises from 0.53 to 0.86 at
-no CRPS cost beyond one-day lead. The corrected intervals are usable; the uncorrected
-ones are not.
-
-What survives is the 2-to-7-day window, and it is not a consolation prize. That window
-is the decision horizon for forecast-informed reservoir operations (FIRO), the
-pre-storm release strategy CW3E has spent a decade validating on California reservoirs,
-and it is where this model class beats persistence everywhere and beats the NWM on
-storage-dominated basins. Skill at those leads also inherits directly from the forcing:
-improvements that AR Reconnaissance flights buy in landfall forecasts pass straight
-through a weather-driven model.
-
-That experiment has now been run (Figure~\ref{fig:ark}). The ARkStorm~2.0 meteorology
-\citep{huang2022climate} --- thirty days of simulated storm over California at 3~km,
-in a historical-climate version and a 2072 version carrying 1.45 times the water ---
-was basin-averaged over the 22 cohort basins, spliced onto a real antecedent year, and
-fed through the trained model unchanged, with the forecast inputs set to perfect
-forecasts so the result isolates the hydrologic response.
-
-In the historical-climate scenario the simulated peaks reach a median of 0.45 of each
-basin's training-record maximum, and no basin reaches its record, under a storm whose
-precipitation has no analog in the training data. Part of that is physics the model
-has evidently learned: the high-elevation basins take a February storm at $-7$\,°C and
-bank it as snowpack (Bear Creek responds at 0.11 of record). The rain-elevation basins
-carry the diagnostic signal: Mill Creek, at $+4$\,°C, peaks at 53~mm/day under daily
-precipitation comparable to what produced its 105~mm/day training record. In the 2072
-scenario the storm crosses the snow line and the high basins jump 2--9 times, more
-than the precipitation ratio; the cohort's peaks land pressed against the training
-ceiling --- median 0.91 of record, 41\% of basins just above it, none beyond 1.28
-times. A megaflood scenario read through this model produces record-adjacent flows,
-not megaflood flows. That is Finding~2's dose--response curve continued past its last
-data point, now measured on the far side of the data edge.
-
-The scenario archive supplies its own process-model reference: WRF's land-surface
-runoff for the same two storms (Figure~\ref{fig:amp}). It is unrouted, so only the
-amplification ratio is comparable --- and there the contrast is direct. From the
-historical to the 2072 storm, precipitation grows 1.45$\times$, WRF's surface-runoff
-peaks grow a median of 2.4$\times$ (an order of magnitude at the snow-line basins),
-and the LSTM's peaks grow 1.59$\times$. Where the scenario stays in-regime the two
-models bracket each other; where it leaves the training distribution, the physics
-keeps amplifying and the learned mapping does not. The ceiling belongs to the model,
-not the meteorology. (No observed truth exists for a synthetic storm, so these are
-structural conclusions about response scaling, not verified peaks; WRF forcing carries
-its own biases relative to the training products, and unrouted runoff overstates
-amplification somewhat, which is why the claim is directional.)
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.6\textwidth]{arkstorm_amplification.png}
-\caption{Hist$\rightarrow$future peak amplification per basin: WRF surface runoff
-(unrouted) vs the LSTM, 22 basins. Gray line 1:1; dotted line: median precipitation
-ratio (1.45). Log axes.}
-\label{fig:amp}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{arkstorm_response.png}
-\caption{ARkStorm~2.0 through the trained model, lead 0, 22 basins. Left: simulated
-scenario peak / training-record maximum flow (dashed lines at 1). Right:
-ARkFuture/ARkHist simulated-peak ratio vs precipitation-total ratio; gray line is
-1:1.}
-\label{fig:ark}
-\end{figure}
+NOAA's Climate Prediction Center reports El Ni\~no conditions in place, with its August
+outlook giving a very strong event 90--95\% odds through early winter
+\citep{cpc2026enso}. Strong El Ni\~no winters tend to shift storm character in a known
+direction, toward a southward-displaced subtropical jet and warmer atmospheric rivers with
+high snow levels, which means more rain falling on basins that usually take snow
+\citep{gershunov2025atmospheric}. Read against the findings above, that is the unfriendly
+direction on three axes at once. The tail is where the model under-predicts, by 52\% above
+the 95th storm percentile same-day and 61\% at three-day lead. Warm storms push snow
+basins toward behavior the training data associates with other basins, and Finding~3 shows
+that failure outside the training envelope arrives silently. And the raw predictive
+intervals miss above the interval seven times more often than below exactly at high flows,
+which Finding~4 shows is correctable, but only after correction. The usable core is the
+two-to-seven-day window, the leads where this model class out-forecasts the gauge (thinly
+on the largest storm days), which is also the FIRO decision horizon, and where forecast
+improvements from atmospheric-river reconnaissance flights pass straight through a
+weather-driven model.
 
 \finding{What this adds up to}
 
@@ -492,50 +511,64 @@ ARkFuture/ARkHist simulated-peak ratio vs precipitation-total ratio; gray line i
 \centering
 \caption{Verdicts by use case.}
 \label{tab:verdict}
-\begin{tabular}{p{0.42\textwidth}p{0.5\textwidth}}
+\begin{tabular}{p{0.36\textwidth}p{0.56\textwidth}}
 \toprule
 Use case & Verdict \\
 \midrule
-2--7 day volume forecast, gauged basin, regime seen in training & \textbf{Yes} --- beats persistence (plain and damped) from day 2--4 and holds skill where both collapse \\
-1-day forecast & \textbf{No} on snowmelt/high-storage basins --- the gauge is better, and free; on rain-driven basins the LSTM already wins at day 1 \\
-Flood peak magnitude & \textbf{Not yet} --- and the process model largely shares the failure \\
-Ungauged basin in an unseen regime & \textbf{No} --- skill inverts \\
-Calibrated uncertainty & \textbf{Yes, after correction} --- a cross-winter affine recalibration restores 0.84--0.93 coverage and improves CRPS beyond 1-day lead; slightly under target at 6--7 days \\
-Replacing the process model & \textbf{No} --- the v3.0 retrospective wins WY2017 on 3 of 5 basins; the models are complementary by regime \\
+2--7 day volume forecast, gauged basin, conditions resembling training & \textbf{Yes.} Beats both persistence baselines on the cohort median from day 2 and on all 22 basins from day 4, across two challenge flood years. Within the top storm bins the margin thins to about a third of the pooled value but holds \\
+1-day forecast & \textbf{Mostly no.} Beats plain persistence on 9 of 22 basins and damped on 4 of 22; the gauge is better, and free. Flashy rain basins are the exception \\
+Flood peak magnitude & \textbf{Not yet.} And the process model largely shares the failure \\
+Ungauged basin & \textbf{Not demonstrated.} One held-out basin inverted (NSE $-0.74$), and the cause is not established, which is itself the caution \\
+Calibrated uncertainty & \textbf{Raw, no} (66--72\% at a claimed 90\%). \textbf{After cross-fitted calibration, yes} (88--91\% at every lead, CRPS-neutral), tested across winters \\
+Replacing the process model & \textbf{No.} The v3.0 retrospective wins WY2017 on 3 of 5 basins; the models are complementary by regime \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The strongest claim this work supports is narrower than ``ML beats the operational
-model,'' and more useful: ML delivers measurable forecast value in gauged, in-regime
-basins at 2-to-7-day leads, and the boundary of that value has been measured on five
-independent axes.
+The strongest claim this work supports is narrower than ``ML beats the process model,''
+and more useful. ML delivers measurable forecast value in gauged basins at
+two-to-seven-day leads under conditions resembling its training data, and the boundary of
+that value has been measured against the baselines an operator has in hand.
 
-\finding{Reproducibility}
+\finding{What it took to trust these numbers}
 
-Every number above comes from a single scoring protocol: simulations read from each
-run's inference output, observations taken from the source gauge records (never from a
-model run's own copy), the framework's metric implementations, checkpoints chosen on
-validation, and a stated 22-basin cohort. Deterministic inference reproduced
-bit-for-bit across repeated runs. The distributional model's sample-median metrics
-carry a bootstrap uncertainty below 0.001 NSE, so reported differences are not
-ensemble-sampling noise. Each configuration is a single training run; seed-to-seed
-variance is the uncontrolled axis.
+Every number above comes from one scoring protocol. Simulations are read from each run's
+inference output; observations come from the source gauge records, never from a model
+run's own copy; metrics use the framework's implementations; checkpoints are chosen on
+validation skill; and medians are over a stated 22-basin cohort. Deterministic inference
+reproduced bit-for-bit across repeated runs. The distributional model's sample-median
+metrics carry a bootstrap uncertainty below 0.001 NSE, so reported differences are not
+ensemble-sampling noise. Each configuration is a single training run, and seed-to-seed
+variance is the uncontrolled axis, which is why none of the small margins above should be
+read to a third decimal.
 
-The protocol has this shape because closure tests kept catching real problems: a
-test-period choice that flattered skill by 0.11 NSE, an evaluation code path that
-silently dropped over a quarter of the scoreable basins from its medians, and an
-upstream bug that writes corrupted observations into the distributional model's output
-files. That last one was caught by an internal-consistency check (two reported metrics
-could not both be true of the same simulation) and traced to the stored observations
-rather than the model. The
-record extension was validated by closure against the overlapping original record,
-which caught a per-basin catchment-area discrepancy and five gauges whose records
-genuinely disagree; those were excluded rather than rescaled.
+The protocol has this shape because closure tests kept catching problems. One test-period
+choice flattered skill by 0.11 NSE. An evaluation code path silently dropped over a
+quarter of the scoreable basins from its medians. An upstream bug writes corrupted
+observations into the distributional model's output files, caught because two reported
+metrics could not both be true of the same simulation. The record extension was validated
+by closure against the overlapping original record, which caught a per-basin
+catchment-area discrepancy and five gauges whose records disagree outright; those were
+excluded rather than rescaled.
 
-Known limitations, failure modes, and the traps encountered along the way are
-documented in \texttt{docs/METHODS.md} in the project repository:\\
-\url{https://github.com/holdenlesliebole/central-valley-flood-lstm}.
+The protocol did not catch everything. An adversarial review of this project in August
+2026 found that two multi-lead analyses paired forecasts with observations from the
+forecast's issue date rather than its target date, so a seven-day forecast was scored
+against flow seven days too early. The recalibration and lead-3 storm numbers in Findings~2
+and 4 are the corrected values. The earlier published versions overstated how badly the raw
+intervals degraded with lead, manufactured a CRPS benefit for recalibration, and
+understated the storm-tail bias. In hindsight there was a visible tell. The old analysis
+showed better CRPS at one-day lead than at same-day, and a one-day forecast cannot beat a
+same-day estimate built from the same information. A closure test now asserts, for every
+lead, that the stored observations equal the source gauge record on the target date (they
+match to one float32 bit), and the split's 28 boundary-date overlaps are tabulated rather
+than assumed harmless. The same review retired this work's earlier geographic framing of
+Sierra snowmelt in favor of the 20-rain and 8-snow census above, along with a
+synthetic-storm scenario experiment whose causal framing did not survive scrutiny. That
+experiment lives on in the project log as an exploratory diagnostic.
+
+Known limitations, failure modes, and the traps encountered along the way are documented in
+\texttt{docs/METHODS.md}.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}

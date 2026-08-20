@@ -47,11 +47,26 @@ Cohort and obs
 ---------------
 Observations are read from the per-basin Caravan-extended netCDFs, NEVER from
 the run's test_results.zarr (that zarr's streamflow_obs field is not to be
-trusted -- see repo CLAUDE.md hard rules), and reindexed onto the zarr's date
-axis. The cohort is the 22 of 28 basins with >=30 valid obs days across the two
-test windows (2016-10-01..2017-09-30, 2022-10-01..2023-09-30); the excluded 6
+trusted -- see repo CLAUDE.md hard rules). The cohort is the 22 of 28 basins
+with >=30 valid obs days across the two test windows
+(2016-10-01..2017-09-30, 2022-10-01..2023-09-30); the excluded 6
 (camels_11124500, _11141280, _11143000, _11151300, _11176400, _11284400) have
-zero obs coverage in the flood windows.
+zero obs coverage in the flood windows. The cohort test is evaluated on the
+lead-0 (issue-date) axis so that the 22-basin cohort stays identical to the one
+used everywhere else in the project.
+
+Valid-date convention -- FIXED 2026-08-19
+-----------------------------------------
+The zarr's `date` coordinate is the forecast ISSUE date and `time_step = k` is
+the lead, so row (d, k) predicts flow on the VALID date d + k
+(googlehydrology/evaluation/tester.py; closure-tested by
+scripts/test_valid_date_alignment.py). Before 2026-08-19 this script paired the
+lead-3 simulation with the observation, precipitation and storm class of the
+ISSUE date, i.e. three days too early, so every published lead-3 number was
+wrong (lead 0 was unaffected). The basin-day table is now long in lead, carries
+both `issue_date` and `valid_date`, and takes obs, precipitation percentile and
+storm bin at the valid date; the water-year window mask is applied on the valid
+date, which drops the k-day overhang whose targets are training labels.
 
 Metric notes
 ------------
@@ -160,25 +175,32 @@ def assign_bin(is_dry: pd.Series, pct: pd.Series) -> pd.Series:
     return bins
 
 
-def build_basin_day_table() -> pd.DataFrame:
-    """One row per (basin, date) in the test windows, with obs, sim(lead0),
-    sim(lead3), precip storm bin -- restricted to the cohort."""
-    res = xr.open_zarr(ZARR_PATH, consolidated=False).squeeze('freq')
-    dates = pd.to_datetime(res.date.values)
-    window_mask = pd.Series(False, index=dates)
+def in_windows(dates: pd.DatetimeIndex) -> np.ndarray:
+    m = np.zeros(len(dates), dtype=bool)
     for start, end in WINDOWS:
-        window_mask |= (dates >= start) & (dates <= end)
+        m |= np.asarray((dates >= start) & (dates <= end))
+    return m
+
+
+def build_basin_day_table() -> pd.DataFrame:
+    """One row per (basin, issue date, lead) with obs, sim, precip storm bin --
+    all taken at valid_date = issue_date + lead, restricted to the cohort and to
+    valid dates inside the two test water years."""
+    res = xr.open_zarr(ZARR_PATH, consolidated=False).squeeze('freq')
+    issue_dates = pd.to_datetime(res.date.values)
+    issue_window_mask = in_windows(issue_dates)
 
     precip_all = fetch_precip_cache()
 
     rows = []
     cohort, dropped = [], []
     for basin in [str(b) for b in res.basin.values]:
-        obs = xr.open_dataset(f'{CARAVAN}/{basin}.nc')['streamflow'].to_series()
-        obs.index = pd.to_datetime(obs.index)
-        obs = obs.reindex(dates)
+        obs_full = xr.open_dataset(f'{CARAVAN}/{basin}.nc')['streamflow'].to_series()
+        obs_full.index = pd.to_datetime(obs_full.index)
 
-        n_valid = int((obs.notna().values & window_mask.values).sum())
+        # Cohort test on the lead-0 axis, so the 22-basin cohort is unchanged.
+        n_valid = int((obs_full.reindex(issue_dates).notna().to_numpy()
+                       & issue_window_mask).sum())
         if n_valid < MIN_VALID_OBS_DAYS:
             dropped.append((basin, n_valid))
             continue
@@ -189,19 +211,20 @@ def build_basin_day_table() -> pd.DataFrame:
         is_dry_full = precip_full < DRY_THRESHOLD_MM
         pct_full = wet_day_percentile(precip_full)
         storm_bin_full = assign_bin(is_dry_full, pct_full)
-        storm_bin = storm_bin_full.reindex(dates)
 
         b = res.sel(basin=basin)
-        sim0 = pd.Series(b['streamflow_sim'].sel(time_step=0).values, index=dates)
-        sim3 = pd.Series(b['streamflow_sim'].sel(time_step=3).values, index=dates)
-
-        df = pd.DataFrame({
-            'basin': basin, 'date': dates, 'obs': obs.values,
-            'sim_ts0': sim0.values, 'sim_ts3': sim3.values,
-            'storm_bin': storm_bin.values,
-        })
-        df = df[window_mask.values]
-        rows.append(df)
+        for lead in LEADS:
+            valid_dates = issue_dates + pd.Timedelta(days=lead)
+            df = pd.DataFrame({
+                'basin': basin,
+                'issue_date': issue_dates,
+                'lead': lead,
+                'valid_date': valid_dates,
+                'obs': obs_full.reindex(valid_dates).to_numpy(),
+                'sim': b['streamflow_sim'].sel(time_step=lead).values,
+                'storm_bin': storm_bin_full.reindex(valid_dates).to_numpy(),
+            })
+            rows.append(df[in_windows(valid_dates)])
 
     print(f'Cohort: {len(cohort)}/{len(res.basin)} basins '
           f'(>= {MIN_VALID_OBS_DAYS} valid obs days across both windows).')
@@ -214,18 +237,20 @@ def build_basin_day_table() -> pd.DataFrame:
 
 def summarize(df: pd.DataFrame) -> pd.DataFrame:
     """Per bin x lead: n, relative bias, relative MAE, pooled NSE, under-pred freq."""
-    sim_col = {0: 'sim_ts0', 3: 'sim_ts3'}
+    cols = ['obs', 'sim', 'issue_date', 'valid_date']
     out = []
     for storm_bin in BIN_ORDER:
         for lead in LEADS:
-            sub = df[df['storm_bin'] == storm_bin][['obs', sim_col[lead]]].dropna()
-            sub = sub.rename(columns={sim_col[lead]: 'sim'})
+            sub = df[(df['storm_bin'] == storm_bin) & (df['lead'] == lead)][cols]
+            sub = sub.dropna(subset=['obs', 'sim'])
             n = len(sub)
             if n == 0:
                 out.append({
                     'storm_bin': storm_bin, 'lead': lead, 'n_basin_days': 0,
                     'rel_bias': np.nan, 'rel_mae': np.nan, 'pooled_nse': np.nan,
-                    'underpred_frac': np.nan,
+                    'underpred_frac': np.nan, 'issue_date_first': '',
+                    'issue_date_last': '', 'valid_date_first': '',
+                    'valid_date_last': '',
                 })
                 continue
             obs_mean = sub['obs'].mean()
@@ -239,6 +264,10 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
                 'storm_bin': storm_bin, 'lead': lead, 'n_basin_days': n,
                 'rel_bias': rel_bias, 'rel_mae': rel_mae,
                 'pooled_nse': pooled_nse, 'underpred_frac': underpred_frac,
+                'issue_date_first': str(sub['issue_date'].min().date()),
+                'issue_date_last': str(sub['issue_date'].max().date()),
+                'valid_date_first': str(sub['valid_date'].min().date()),
+                'valid_date_last': str(sub['valid_date'].max().date()),
             })
     return pd.DataFrame(out)
 
@@ -275,7 +304,8 @@ def make_figure(summary: pd.DataFrame) -> None:
 
     fig.suptitle(
         'Skill by storm-size bin (per-basin wet-day precipitation percentile), '
-        'WY2017 + WY2023, cohort n=22',
+        'WY2017 + WY2023, cohort n=22\n(obs, precipitation and storm class all '
+        'taken at valid date = issue date + lead)',
         fontsize=10.5, x=0.02, ha='left')
     fig.tight_layout(rect=[0, 0, 1, 0.93])
     out_path = f'{OUT_DIR}/storm_stratified_skill.png'
@@ -300,6 +330,11 @@ def main() -> None:
             'which makes NSE noisy/undefined for rare bins.\n'
             '# rel_bias = mean(sim-obs)/mean(obs); rel_mae = mean(|sim-obs|)/mean(obs); '
             'underpred_frac = fraction of basin-days with sim < obs.\n'
+            '# VALID-DATE SCORING (fixed 2026-08-19): each row pairs the lead-k '
+            'simulation with the observation, precipitation percentile and storm '
+            'class at valid_date = issue_date + k, and the water-year window mask '
+            'is applied on valid_date. Pre-fix lead-3 numbers used issue-date '
+            'observations and precipitation and must not be quoted.\n'
         )
         summary.to_csv(f, index=False)
     print(f'Wrote {out_csv}')

@@ -100,7 +100,7 @@ def fig_persistence() -> None:
     leads = range(1, 8)
     panels = [
         ('All basins (n=22)', lstm, pers, None),
-        ('5 snowmelt focus basins', lstm[lstm.basin.isin(focus)],
+        ('5 focus basins (4 snow, 1 rain)', lstm[lstm.basin.isin(focus)],
          pers[pers.basin.isin(focus)], None),
     ]
     fig, axes = plt.subplots(1, 2, figsize=(8.2, 3.4), sharey=True)
@@ -161,8 +161,8 @@ def fig_lobo() -> None:
     ax.legend(loc='upper right', frameon=False, fontsize=8)
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-    fig.suptitle('Rain-driven Mill Ck, WY2023: held out of a snowmelt-trained model, '
-                 'skill inverts', fontsize=10.5, x=0.02, ha='left')
+    fig.suptitle('Rain-driven Mill Ck, WY2023: held out of training, skill inverts '
+                 '(LOBO experiment)', fontsize=10.5, x=0.02, ha='left')
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(f'{OUT}/lobo_millck_inversion.png', bbox_inches='tight')
     plt.close(fig)
@@ -192,7 +192,8 @@ def fig_probabilistic() -> None:
     a2.set_ylim(0.5, 1.0)
     a2.set_xlabel('forecast lead (days)')
     a2.set_ylabel('coverage of 90% interval')
-    a2.set_title('…but overconfident: 66–74% coverage', fontsize=9.5)
+    a2.set_title('…but overconfident: 66–74% coverage (per-basin median)',
+                 fontsize=9.5)
     fig.suptitle('The distributional head: sharper and uncalibrated',
                  fontsize=10.5, x=0.02, ha='left')
     fig.tight_layout(rect=[0, 0, 1, 0.95])

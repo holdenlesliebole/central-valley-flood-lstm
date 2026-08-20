@@ -1,8 +1,10 @@
 # Central Valley flood-forecasting LSTM — methods, results, and traps
 
-**Last updated 2026-08-18 (b).** This is the reproducibility and methodology record for the
+**Last updated 2026-08-19.** This is the reproducibility and methodology record for the
 code in this repo; the public-facing summary is the site writeup, which must not drift
-from the numbers here. Paths in this file are machine-specific.
+from the numbers here. Paths in this file are machine-specific. Protocol version history
+and the current known-unfixed list are in §6; the 2026-08-19 corrections are documented in
+`docs/adversarial_review_tier1_memo.md`.
 
 Upstream is Google Research's open flood-forecasting framework (package
 `googlehydrology`, forked from NeuralHydrology, vendored in
@@ -103,7 +105,7 @@ there, so that result is not a conversion artifact.
 **Original (2026-06):** train 1985–2008 · val 2009–2011 · test 2012–2014.
 The test window is **CA drought onset**, which flatters skill and undertests peaks.
 
-**Flood split (current, 2026-08-12)** — every day used, no gaps:
+**Flood split (current, 2026-08-12)** — contiguous on forecast **issue** dates:
 
 | Period | Use |
 |---|---|
@@ -119,6 +121,25 @@ Training grows 24 → ~34.8 years. The framework accepts **lists** for
 `train_start_date`/`train_end_date`/`test_*`, which is what makes disjoint periods possible.
 **Consequence: 2012–2014 is now training data, so flood-split numbers are NOT comparable
 to the original 0.808.** Both heads were retrained on this split for that reason.
+
+**The split is not purged, and that is a defect rather than a feature (2026-08-19).** The periods
+above are contiguous on *issue* dates, but `lead_time: 7` with `predict_last_n: 8` means a
+sample issued on day `d` carries labels for `d .. d+7`
+(`multimet.py::_calc_date_range(..., lead=True)`), so target dates spill across every
+boundary. **28 calendar dates are labels in both a training and a test sample**: the first
+seven days of October at each of the four window seams (2016-10-01…07 and 2022-10-01…07
+inside the nominal test windows; 2017-10-01…07 and 2023-10-01…07 in the overhang past each
+window end), plus **14 more shared between training and validation** (2009-01-01…07,
+2012-01-01…07). Weighted by observation availability that touches **1.94% of scored
+rows** (2,464 of 127,256) and **3.87% of scored samples** (616 of 15,914); at lead 0 it is
+308 of 15,907 basin-days. The dates are early-October low flow, so the effect on any median
+is almost certainly negligible. But the model shares weights across all eight target steps,
+so 1.94% is a lower bound on exposure, not an upper bound on effect. An earlier version of
+this section described "every day used, no gaps" as a virtue; for a multi-horizon forecast it
+is the wrong objective. **The fix is a 7-day purge/embargo on both sides of every validation
+and test window, which requires retraining and has not been done.** Quantification:
+`scripts/make_split_leakage_report.py` → `outputs/figures/split_leakage.csv`. Once the split
+is purged that script should become an assertion (`test_split_target_dates_disjoint`).
 
 ### 3.2 Checkpoint selection — part of the method, not a detail
 
@@ -205,12 +226,29 @@ its nested partner in training and leaks the hydrograph. **Do not quote 0.857/0.
 ungauged skill.** The genuinely independent tests are Bear Ck, Pitman Ck and Mill Ck —
 **median NSE 0.375**, far below the 0.754 gauged flood-year performance.
 
-**The headline finding: the model regionalizes within a hydrologic regime and fails across
-regimes.** Mill Ck is the only rain-driven basin among the five. Held out from 27
-mostly-snowmelt basins it does not merely degrade — it inverts, scoring NSE −0.740 with
-FHV **+80%**, over-predicting high flow where every other basin under-predicts. That is the
-operationally important caveat for ungauged prediction, and it is a far sharper claim than
-"ungauged transfer works."
+**The headline finding: a held-out basin can fail completely, and this experiment cannot say
+why.** Mill Ck does not merely degrade; it inverts, scoring NSE −0.740 with FHV **+80%**,
+over-predicting high flow where every other basin under-predicts.
+
+**The mechanism claim is WITHDRAWN (2026-08-19).** This section previously read "the model
+regionalizes within a hydrologic regime and fails across regimes … Mill Ck is the only
+rain-driven basin among the five … held out from 27 mostly-snowmelt basins." The basin
+census contradicts it. By this project's own `frac_snow < 0.3` rule the 28 configured basins
+are **20 rain / 8 snow**; the 22-basin cohort is **14 rain / 8 snow**; and the 27 basins
+remaining after Mill Ck is held out are **19 rain / 8 snow**. Mill Ck's own `frac_snow` is
+**0.000**, shared exactly by eighteen other basins in the set. It is the only rain-classified
+basin *among the five focus basins*, which is a property of the focus list, not of the
+training population. Committed census: `outputs/figures/basin_regime_table.csv`
+(`scripts/make_basin_regime_table.py`).
+
+What remains unidentified is the cause. Candidates this design cannot separate: basin
+attributes, catchment scale, precipitation-to-flow timing, record-extension differences,
+static-feature insufficiency, spatial extrapolation, and single-seed training variance.
+Naming a mechanism would take leave-cluster-out tests across several rain/snow/aridity/
+elevation/seasonality groups, not one basin. **The operational lesson survives the demolished
+explanation**: a regional model can fail completely on a basin it has never seen, nothing in
+its outputs announces that it is doing so, and skill on the training cohort said nothing
+about Mill Ck.
 
 ### 4.1c CMAL evaluation spread — SUPERSEDED 2026-08-14
 
@@ -268,6 +306,12 @@ product, and beyond §4.1's NSE edge it is where the distributional head separat
 Coverage of **0.66–0.74 against a nominal 0.90**, outside the pre-specified 85–95%
 band at every lead. Per focus basin at lead 1: Mill Ck 0.805, Bear Ck 0.744, Merced HI
 0.705, Merced Pohono 0.622, **Pitman Ck 0.537**.
+
+**Two coverage conventions are in play across this document; do not mix them.** The
+0.66–0.74 above is a **median over per-basin coverages**. §4.5 reports **pooled-basin-day**
+coverage, 0.658–0.723, on the same raw ensemble. Both are correct and both are
+valid-date aligned; the public writeup quotes the pooled figure ("66–72%"). State which one
+whenever the number travels.
 
 **Result 3 — the diagnosis, settled by the rank histogram (2026-08-17,
 `make_pit_diagnostic.py`).** Coverage says the intervals miss 26–34% of observations,
@@ -354,23 +398,75 @@ its nearest comparison is lead-1 persistence.
 
 - **At 1 day ahead, yesterday's gauge beats the LSTM nearly everywhere** — cohort 0.712
   vs 0.667, focus-5 0.944 vs 0.810. The earlier "LSTM beats persistence at every lead
-  across all basins" does not survive the pairing correction.
+  across all basins" does not survive the pairing correction. **Per-basin counts, not
+  just medians (2026-08-19):** at lead 1 the LSTM beats plain persistence on **9 of 22**
+  basins and damped on **4 of 22**; at lead 2, 17 of 22 against both; at lead 3, 21 of 22;
+  from lead 4, **22 of 22**. State the counts alongside the median; "beats persistence
+  everywhere" is true only from day 4.
 - **The LSTM overtakes at 2 days ahead across the cohort** (0.688 vs 0.484 plain,
-  0.566 damped) **and on the high-storage snowmelt focus basins at 3 days vs plain
+  0.566 damped) **and on the high-storage focus basins at 3 days vs plain
   persistence (0.809 vs 0.803) but only at 4 days vs damped persistence** (0.811 vs
   0.768; damped still wins day 3, 0.814 vs 0.809). Damped persistence
-  (climatology + α^k × lag-k anomaly, α fit on training) is the stronger null and
-  decays slower; per-lead values are in `persistence_by_lead.csv` (damped_* columns,
-  added 2026-08-17). Both nulls collapse at long leads while the LSTM decays slowly.
-- **On rain-driven Mill Ck the LSTM wins at every lead** (0.618 vs 0.541 at lead 1;
-  persistence is negative by lead 3) — flashy rain response is not persistent.
+  (climatology + α^k × lag-k anomaly, α fit on training) is the stronger null *on
+  average* and decays slower; per-lead values are in `persistence_by_lead.csv`
+  (damped_* columns, added 2026-08-17). Both nulls collapse at long leads while the
+  LSTM decays slowly. Four of the five focus basins are snow-classified and one
+  (Mill Ck) is rain-classified, so do not call the focus list "5 snowmelt basins."
+- **On rain-driven Mill Ck the LSTM wins at every lead** (0.618 vs 0.541 plain and 0.594
+  damped at lead 1; plain persistence is negative by lead 3), because flashy rain response
+  is not persistent.
 
 **The asymmetry must travel with these numbers:** the LSTM is forcing-driven and **never
 ingests observed discharge** (`hindcast_inputs` are HRES/IMERG/CPC precipitation and
 temperature only). Persistence uses yesterday's gauge reading, which the model is denied —
 but a real operator *does* have the gauge. Reframed claim: *beats NWM, and beats
-gauge-persistence from ~day 3–4 on snowmelt basins and at every lead on rain-driven ones.*
-This points directly at the obvious next architecture: **assimilate the gauge.**
+gauge-persistence on the cohort median from day 2, on all 22 basins from day 4, and at
+every lead on flashy rain-driven basins.* This points directly at the obvious next
+architecture: **assimilate the gauge.**
+
+#### 4.2b Persistence conditioned on storm size (2026-08-19) — `make_storm_stratified_persistence.py`
+
+The crossover above is a whole-period statement. An operator cares about the storm days, so
+the same matched-lead comparison was re-run inside the §4.4 storm bins, valid-date aligned,
+on a row set where LSTM, plain and damped are all finite (110,117 of 111,804 rows). The
+baselines are **imported from `make_baselines.py`, not re-implemented**: per-basin α and
+per-lead NSE reconcile with the committed `persistence_by_lead.csv` to 1.1e-16, and the
+per-basin win counts reproduce the 9/22, 4/22 … 22/22 ladder above exactly.
+
+MAE skill score `1 − MAE_LSTM/MAE_baseline` vs plain persistence (win rate in parentheses):
+
+| Lead | all days | P80–P95 | >P95 |
+|---|---|---|---|
+| 1 | −0.259 (0.20) | −0.151 (0.35) | −0.081 (0.39) |
+| 2 | +0.173 (0.32) | **+0.056 (0.45)** | **+0.064 (0.52)** |
+| 3 | +0.295 (0.39) | +0.131 (0.49) | +0.116 (0.57) |
+| 4 | +0.369 (0.43) | +0.238 (0.56) | +0.150 (0.58) |
+| 7 | +0.429 (0.53) | +0.355 (0.63) | +0.286 (0.70) |
+
+- **The day-2 crossover survives in the top two storm bins, at about a third of the pooled
+  margin.** +0.06 at lead 2 in both, against +0.17 pooled.
+- **On day-count it arrives later.** In P80–P95 the LSTM does not win a majority of
+  individual basin-days against plain persistence until **lead 4** (0.563); at lead 2 it
+  wins on total error while losing on more days than it wins (0.451), i.e. the early gain
+  is avoiding a few very large persistence misses, not being routinely better.
+- **The tail advantage is persistence collapsing, not the LSTM performing.** In >P95 the
+  LSTM's MAE is flat with lead (10.94 → 10.81 mm/day, mean obs 17.13, so ~63% relative MAE
+  at every horizon, rel. bias −0.58 to −0.62) while plain persistence degrades 10.12 →
+  15.13. Both are poor on extreme days; the LSTM is less poor, and its error is a
+  magnitude problem rather than a horizon problem.
+- **Damped persistence is the stronger null on average and the WEAKER null in storms.**
+  Pooled, damped beats plain at every lead (lead 3 MAE 1.860 vs 2.065; pooled NSE 0.458 vs
+  0.273). Inside P80–P95 the ordering inverts from lead 2 (lead 3 MAE 5.775 damped vs
+  4.913 plain; pooled NSE 0.228 vs 0.416), because relaxing toward climatology is exactly
+  wrong on a storm day. **Score tail claims against whichever null is stronger in the bin,
+  not against damped by default.**
+- **The lead-1 loss is a quiet-day phenomenon**: MAE skill −0.458 in the dry bin and −0.372
+  in wet ≤P50, against −0.151 and −0.081 in the two storm bins. The gauge is nearly
+  unbeatable on a calm day and merely better in a storm.
+
+Within-bin NSE is deliberately not the headline (conditioning on precipitation truncates the
+observed variance); pooled NSE is carried as footnote columns in the CSV. Leads 1–7 only,
+because time_step 0 has no exact persistence analogue.
 
 ### 4.3 NWM benchmark
 
@@ -426,17 +522,35 @@ each basin's own wet-day precipitation climatology percentile; 15,907 basin-days
 classified. Relative bias = mean(sim−obs)/mean(obs); subset NSE is computed on the
 bin's own days and is not comparable to whole-record NSE.
 
-| Bin | n | bias (lead 0) | bias (lead 3) | under-pred. frac (lead 0) |
-|---|---|---|---|---|
-| dry (<1 mm/d) | 10,645 | −0.015 | −0.038 | 0.513 |
-| wet ≤P50 | 2,368 | −0.008 | −0.057 | 0.481 |
-| P50–P80 | 1,550 | +0.004 | −0.010 | 0.481 |
-| P80–P95 | 931 | **−0.219** | −0.144 | 0.673 |
-| >P95 | 413 | **−0.518** | −0.532 | **0.838** |
+**Lead-3 rows CORRECTED 2026-08-19** (see the withdrawal note below). Each lead-k row
+pairs the simulation with the observation, precipitation percentile and storm class at
+**valid date = issue date + k**, and the water-year mask is applied on the valid date,
+which is why the lead-3 counts differ slightly from lead 0.
+
+| Bin | n (lead 0) | n (lead 3) | bias (lead 0) | bias (lead 3) | under-pred. frac (lead 0) | under-pred. frac (lead 3) |
+|---|---|---|---|---|---|---|
+| dry (<1 mm/d) | 10,645 | 10,554 | −0.015 | +0.017 | 0.513 | 0.507 |
+| wet ≤P50 | 2,368 | 2,343 | −0.008 | +0.007 | 0.481 | 0.501 |
+| P50–P80 | 1,550 | 1,534 | +0.004 | −0.039 | 0.481 | 0.540 |
+| P80–P95 | 931 | 931 | **−0.219** | **−0.296** | 0.673 | 0.734 |
+| >P95 | 413 | 413 | **−0.518** | **−0.614** | **0.838** | **0.879** |
 
 Bias is within ±2% of zero up to the 80th percentile and breaks above it. The
 magnitude miss of §4.1 is concentrated almost entirely above the 80th storm
-percentile, not spread across the flow distribution.
+percentile, not spread across the flow distribution. **Correctly aligned, the tail failure
+is worse at lead 3 than at lead 0, not milder.** Per §4.2b the model's error in the top
+bin is nearly identical at leads 1 and 7, so this is a magnitude problem rather than a
+forecast-horizon problem.
+
+**WITHDRAWN: the lead-3 numbers published before 2026-08-19.** They were
+−0.038 / −0.057 / −0.010 / −0.144 / −0.532 with under-prediction fractions
+0.581 / 0.565 / 0.485 / 0.542 / 0.738. That version paired the lead-3 simulation with the
+observation, precipitation and storm class of the **issue** date, three days too early. The
+zarr's `date` is the issue date and `time_step = k` the lead, so row (d, k) is a forecast
+for d + k (`tester.py`; closure-tested to one float32 ULP by
+`scripts/test_valid_date_alignment.py`). **Do not quote the old lead-3 row.** Lead 0 is
+unaffected (d + 0 = d), and every lead-0 value above is unchanged, including the 15,907
+basin-day count, which the closure test independently confirms.
 
 **Peak error vs event magnitude** (`make_peak_error_curve.py`). 281 observed flow
 events (find_peaks, prominence ≥ per-basin P80, ≥5-day separation; sim peak matched
@@ -449,45 +563,98 @@ maximum** (largest normalized magnitude 0.980), so the curve measures approach t
 the edge of the training distribution, not extrapolation beyond it; that region
 remains unmeasured pending a scenario-forcing stress test.
 
-### 4.5 Flow-conditional recalibration (2026-08-18) — coverage recovered at near-zero CRPS cost
+**Exploratory; quote the direction, not the slope (2026-08-19).** Three problems keep the
+−0.661 from being a measured dose-response. The top bin holds **three events**. The 281
+events cluster by basin and storm sequence and are treated as independent by a pooled
+Theil–Sen fit, and the rain population (n=214) dominates it. And the observed peak appears in
+both axes (x = obs/train_max, y = (sim−obs)/obs), which can induce a negative slope
+mechanically, so a null error model is needed before the number means anything. Also note
+`dropna()` runs before `find_peaks`, so "≥5-day separation" is five valid rows rather than
+five calendar days, and the P80 flow value is used as a *prominence* amount rather than a
+threshold. **The storm-percentile bins above share none of these problems and carry the
+load-bearing version of the claim; the slope is direction only.**
 
-`make_recalibration.py`. Cross-window conformal design: an affine map of the ensemble,
-x' = mu·(m + s·(x−m)) with m the per-day sample median, is fit on one flood water year
-and applied to the other (both directions; composite reported). Bands assigned by the
-predicted sample median normalized per basin (available at forecast time). Fitting on
-the 2009–2011 validation years was the original design; `run infer --period validation`
-yields an empty dataset (forecast-product inputs do not assemble there), so the flood
-years provide the split. A vendored-code patch enabling validation zarr writes is
-recorded (`upstream/tester-validation-zarr.patch`) for when that path is fixed.
+### 4.5 Cross-fitted affine calibration (2026-08-18; CORRECTED 2026-08-19) — coverage recovered at essentially no CRPS cost
+
+`make_recalibration.py`. **Call the method cross-fitted affine calibration, not conformal
+prediction.** It picks multiplicative location and spread parameters by median ratio and
+bisection to hit empirical coverage; there is no nonconformity score, no quantile
+construction, and no finite-sample coverage guarantee. The earlier "cross-window conformal
+design" wording was wrong and is retired.
+
+Design: an affine map of the ensemble, x' = mu·(m + s·(x−m)) with m the per-day sample
+median, is fit on one flood water year and applied to the other (both directions; composite
+reported). Bands assigned by the predicted sample median normalized per basin (available at
+forecast time). Fitting on the 2009–2011 validation years was the original design;
+`run infer --period validation` yields an empty dataset (forecast-product inputs do not
+assemble there), so the flood years provide the split. A vendored-code patch enabling
+validation zarr writes is recorded (`upstream/tester-validation-zarr.patch`) for when that
+path is fixed.
+
+**Scoring is valid-date aligned (fixed 2026-08-19).** Each lead-k row is scored against the
+source observation at valid date = issue date + k; the WY2017/WY2023 cross-fitting windows
+are assigned on the valid date; and the 1,232 rows (0.97%) whose valid date lands in the next
+training period are dropped. Every output row carries explicit `issue_date` and `valid_date`
+spans, and `outputs/figures/recalibration_by_basin.csv` carries the same per basin × lead ×
+variant.
 
 Fit parameters (all bands reach 90% fit-window coverage without hitting the s=8 cap):
-mu 0.90–1.24, s 1.55–5.88 flow-conditional; global mu 1.08–1.14, s 1.91–2.65.
+flow-conditional mu **1.004–1.132**, s **0.961–3.867**; global mu **1.024–1.062**,
+s **1.680–2.289**.
 
 Composite out-of-sample results (pooled basin-days; note: pooled-day coverage, so the
 raw values differ slightly from §4.1d's per-basin medians; samples thinned to 938):
 
 | Lead | raw cov. | global cov. | flow-cond. cov. | raw CRPS | global | flow-cond. |
 |---|---|---|---|---|---|---|
-| 0 | 0.723 | 0.929 | 0.925 | 0.901 | 0.987 | 1.003 |
-| 3 | 0.613 | 0.907 | 0.908 | 1.475 | 1.405 | 1.368 |
-| 7 | 0.462 | 0.840 | 0.840 | 2.186 | 2.022 | 1.942 |
+| 0 | 0.723 | 0.912 | 0.906 | 0.901 | 0.939 | 0.900 |
+| 3 | 0.696 | 0.896 | 0.890 | 1.059 | 1.087 | 1.054 |
+| 7 | 0.658 | 0.887 | 0.876 | 1.209 | 1.209 | 1.196 |
 
-- **Coverage is recoverable**: 0.84–0.94 across leads (inside or near the 85–95% band;
-  slightly under at leads 6–7), from raw 0.46–0.73.
-- **The CRPS cost is negative beyond lead 1**: recalibration *improves* CRPS at leads
-  ≥2 (e.g., 2.19→1.94 at lead 7) because the multiplicative median correction removes
-  real conditional bias; the cost at leads 0–1 is ≤0.11 mm/day.
-- **The flow-conditional map earns its keep on high-flow days**: on top-tercile obs
-  days, raw coverage is 0.530 with 39% of observations escaping above the interval;
-  global affine reaches 0.843 (15.1% above); flow-conditional 0.859 (13.1% above) with
-  the best CRPS (3.50 vs 3.67 global, 3.85 raw). A single global affine map recovers
-  most aggregate coverage — the §4.1d prediction that *pure variance inflation* cannot
-  fix the displacement is confirmed in the mu parameters (all ≠ 1), not falsified by
-  the global map, which also shifts the median.
-- Transfer caveat: parameters fit on one AR winter transfer to the other at the
-  0.84–0.93 coverage level; both directions behave similarly.
+- **Raw intervals under-cover by a roughly constant margin at every lead**: 0.658–0.723
+  against a nominal 0.90. There is no lead-dependent collapse.
+- **Coverage is recoverable**: 0.876–0.912 across all leads, inside the 85–95% band, and it
+  no longer sags at leads 6–7.
+- **The correction is essentially CRPS-neutral.** The flow-conditional map costs nothing at
+  lead 0 (0.901 → 0.900) and gains about 1% at lead 7 (1.209 → 1.196). The **global** map is
+  slightly worse than raw at every lead (0.00–0.04 mm/day). There is no CRPS gain from
+  recalibration to claim.
+- **On high-flow days the two maps split the verdict.** On top-tercile obs days raw coverage
+  is 0.697 with 26.1% of observations escaping above the interval; flow-conditional reaches
+  0.854 (12.0% above) with the **best CRPS** of the three (2.784 vs 2.892 global, 2.854 raw),
+  while **global reaches the higher coverage** (0.888, 10.9% above). Flow-conditional no
+  longer beats global on both.
+- **Softened, per the corrected fit parameters:** the §4.1d reading that the high-flow misses
+  are displacement rather than dispersion is consistent with mu ≠ 1 in every band, but the
+  corrected mu values are all within 13% of 1, so the parameters carry much weaker evidence
+  for that mechanism than the pre-fix values (0.90–1.24) appeared to. Treat it as a
+  hypothesis the PIT diagnosis motivates, not a result the mu values establish.
+- Transfer caveat: parameters fit on one AR winter transfer to the other at the 0.88–0.91
+  coverage level; both directions behave similarly.
 
-### 4.6 ARkStorm 2.0 scenario stress test (2026-08-19)
+**WITHDRAWN: every multi-lead number published before 2026-08-19.** The pre-fix table read
+raw coverage 0.723 / 0.613 / 0.462 and raw CRPS 0.901 / 1.475 / 2.186 at leads 0/3/7, with
+recalibration "improving" CRPS 2.19 → 1.94 at lead 7 and high-flow raw coverage of 0.530.
+`gather()` built the source-observation vector once on the issue dates and reused it at every
+lead, so leads 1–7 were scored against flow k days too early; only lead 0 was ever right.
+**The visible tell, missed at the time: pre-fix raw CRPS at lead 1 (0.799) was better than at
+lead 0 (0.901), and a one-day forecast cannot beat a same-day nowcast built from the same
+information.** Found by adversarial review on 2026-08-19; anatomy in
+`docs/adversarial_review_tier1_memo.md`.
+
+### 4.6 ARkStorm 2.0 scenario stress test (2026-08-19) — RETAINED AS EXPLORATORY; CUT FROM THE PUBLIC WRITEUP 2026-08-19
+
+**Status note (2026-08-19).** The adversarial review found this section's causal framing
+unsupported, and it was cut from the public writeup and the manuscript. It stays here as a
+project-log diagnostic. The LSTM and the native WRF surface runoff do not share hydrologic
+states, WRF runoff is unrouted and lacks baseflow, forcing aggregation is approximate, and no
+truth exists for a synthetic storm, so the hist→ftr amplification comparison is
+**hypothesis-generating, not causal attribution**. Read "the ceiling belongs to the model,
+not the meteorology" below as the hypothesis it is, and "snow banking is real physics,
+learned" as "the response is consistent with temperature-gated storage"; an input-output
+pattern does not identify an internal representation. Any future use needs sensitivity to
+multiple antecedent years, bias-corrected vs raw scenario forcing, alternative basin
+aggregation, and a routed comparator initialized from comparable states.
 
 `make_arkstorm_forcing.py` + `make_arkstorm_run.py`; provenance and archive detail in
 `docs/arkstorm_feasibility.md`. Design: Huang & Swain's 3-km WRF scenario meteorology
@@ -652,13 +819,32 @@ regenerations on 2026-08-14). Copy metrics CSVs aside before re-running either v
 
 ## 6. State and next steps
 
-**2026-08-14: the numbers are final and internally consistent.** All headline results
-now flow from four scripts under one protocol (`make_model_comparison.py`,
-`make_lstm_by_lead.py` + `make_baselines.py`, `make_probabilistic_scores.py`,
-`make_benchmark_flood.py`) with obs from source netCDFs and the 22-basin cohort stated.
-The remaining work is presentation: figures for the flood-split story, the public
-writeup refresh (NWM flood-year section, corrected persistence pairing, corrected
-cohort medians), and publication of this repo.
+**Protocol status.** An earlier version of this section read "2026-08-14: the numbers are
+final and internally consistent." That was premature: two multi-lead analyses were wrong on
+that date and stayed wrong for five days. Finality is a claim about a protocol version, not
+about a project, so it is tracked here as a version table rather than asserted.
+
+| Date | Protocol change | Status of numbers under it |
+|---|---|---|
+| 2026-08-12 | Flood split (WY2017 + WY2023); both heads retrained at h=16 and h=128 | superseded by the scoring-protocol fixes below |
+| 2026-08-14 | One scoring protocol: sims from `run infer`, obs from source netCDFs, framework metric functions, fixed 22-basin cohort stated with every median (traps §5.2, §5.8, §5.9) | **current** for all lead-0 and point-metric results |
+| 2026-08-14 | Persistence pairing corrected to time_step k ↔ persistence lead k (§4.2) | **current** |
+| 2026-08-17 | Best-validation checkpoints; peak metrics computed per window; per-lead CRPS labels fixed | **current** |
+| 2026-08-19 | **Valid-date bug found by adversarial review.** `make_recalibration.py` and `make_storm_stratified_skill.py` scored every lead against issue-date observations. Both corrected to valid date = issue date + lead; §4.4 lead-3 row and all of §4.5 regenerated; explicit `issue_date`/`valid_date` columns added to both outputs; closure test `scripts/test_valid_date_alignment.py` added | **current** for §4.4 and §4.5; all pre-2026-08-19 multi-lead values in those sections are withdrawn |
+| 2026-08-19 | Basin census committed (`basin_regime_table.csv`): 20 rain / 8 snow of 28, cohort 14/8, Mill Ck LOBO set 19/8. §4.1b regime mechanism withdrawn | **current** |
+| 2026-08-19 | Split-boundary leakage quantified (`split_leakage.csv`): 28 shared label dates, 1.94% of rows. **Not fixed**; a purged split needs retraining | measurement only; the split remains unpurged |
+| 2026-08-19 | Storm-stratified persistence comparison added (§4.2b, `make_storm_stratified_persistence.py`) | **current** |
+| 2026-08-19 | §4.6 ARkStorm reframed as exploratory and cut from the public writeup and manuscript | project log only |
+
+**Known-unfixed, in priority order:** the split is not purged; WY2017/WY2023 are challenge
+years rather than untouched tests, having steered capacity, calibration and narrative
+choices; training and validation run mostly on ERA5-Land standing in for the forecast
+channels while the test years run on real forecasts (a hindcast-to-forecast domain shift, not
+a controlled comparison); every configuration is a single seed. Full inventory and the
+prose-sync checklist: `docs/adversarial_review_tier1_memo.md`.
+
+The public writeup master is `~/Documents/Job_Search/portfolio/central_valley_writeup.md`;
+`paper/main.tex` is its LaTeX rendition. Both were synced to this protocol on 2026-08-19.
 
 **Explicitly deferred** (real science, does not change the writeup's conclusions):
 peak attribution (forcing/loss/OOD/capacity arms), calibrated SAC-SMA/MARRMoT baseline,

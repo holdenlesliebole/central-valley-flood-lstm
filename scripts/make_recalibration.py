@@ -40,8 +40,24 @@ measure what uniform inflation alone achieves.
 Outputs coverage and fair CRPS per lead on the test years for raw, global,
 and flow-conditional variants, plus high/low-flow escape rates.
 
+Valid-date convention -- FIXED 2026-08-19
+-----------------------------------------
+The zarr's `date` coordinate is the forecast ISSUE date and `time_step = k` is
+the lead, so row (d, k) predicts flow on the VALID date d + k
+(googlehydrology/evaluation/tester.py; closure-tested by
+scripts/test_valid_date_alignment.py). Before 2026-08-19 this script built the
+source-observation vector once on the issue dates and reused it at every lead,
+so leads 1-7 were scored against flow k days too early; only lead 0 was right.
+Every row now carries both `issue_date` and `valid_date = issue_date + lead`,
+observations are read at the valid date, and the cross-fitting windows
+(WY2017 / WY2023) are assigned by valid date. Rows whose valid date falls
+outside both test water years -- the k-day overhang past each window end, whose
+targets are training labels -- are dropped and the count is reported.
+
 Usage:  python scripts/make_recalibration.py
-Writes: outputs/figures/recalibration.csv, outputs/figures/recalibration.png
+Writes: outputs/figures/recalibration.csv (summary by variant x lead),
+        outputs/figures/recalibration_by_basin.csv (per basin x lead x variant),
+        outputs/figures/recalibration.png
 """
 
 from __future__ import annotations
@@ -70,6 +86,9 @@ BAND_EDGES = [0.0, 0.5, 0.8, 0.95, 1.0]   # quantiles of normalized predicted fl
 S_CAP = 8.0
 MIN_PRED = 0.01                            # mm/day; below this, no correction fit
 THIN = 8                                   # ~940 of 7500 samples; keeps the flattened arrays ~2 GB
+# Test water years, keyed on VALID date (not issue date).
+WINDOWS_WY = {'WY2017': ('2016-10-01', '2017-09-30'),
+              'WY2023': ('2022-10-01', '2023-09-30')}
 
 INK, BLUE, PURPLE, GREEN = '#3a3a38', '#2f6bd8', '#8458d8', '#2e8a5c'
 
@@ -81,19 +100,27 @@ def load_period(zarr_path):
     return ds, dates, basins
 
 
-def source_obs(basin, dates):
+def source_series(basin):
+    """Full source-netCDF flow series for a basin, indexed by VALID date."""
     q = xr.open_dataset(f'{CARAVAN}/{basin}.nc')['streamflow'].to_series()
     q.index = pd.to_datetime(q.index)
-    return q.reindex(dates).to_numpy().astype('float64')
+    return q
 
 
 def gather(zarr_path):
-    """Flatten (basin, date, lead) -> rows with samples, obs, predictor."""
+    """Flatten (basin, issue date, lead) -> rows with samples, obs, predictor.
+
+    Observations are taken at valid_date = issue_date + lead; both dates are
+    returned so no downstream row can exist without its date bookkeeping.
+    """
     ds, dates, basins = load_period(zarr_path)
-    sam, obs, med, basin_ix, lead_ix, date_ix = [], [], [], [], [], []
+    sam, obs, med = [], [], []
+    basin_ix, lead_ix, issue_ix, valid_ix = [], [], [], []
     for bi, b in enumerate(basins):
-        o = source_obs(b, dates)
+        q = source_series(b)
         for lead in range(ds.sizes['time_step']):
+            vdates = dates + pd.Timedelta(days=lead)
+            o = q.reindex(vdates).to_numpy().astype('float64')
             x = ds['streamflow_sim'].isel(
                 basin=bi, time_step=lead
             ).values[:, ::THIN].astype('float64')
@@ -102,10 +129,11 @@ def gather(zarr_path):
             sam.append(x[valid]); obs.append(o[valid]); med.append(m[valid])
             basin_ix.append(np.full(valid.sum(), bi))
             lead_ix.append(np.full(valid.sum(), lead))
-            date_ix.append(dates[valid].values)
+            issue_ix.append(dates[valid].values)
+            valid_ix.append(vdates[valid].values)
     return (np.concatenate(sam), np.concatenate(obs), np.concatenate(med),
             np.concatenate(basin_ix), np.concatenate(lead_ix),
-            np.concatenate(date_ix))
+            np.concatenate(issue_ix), np.concatenate(valid_ix), basins)
 
 
 def coverage(sam, obs):
@@ -156,11 +184,23 @@ def transform(sam, med, norm, edges, params):
 
 def main() -> None:
     test_zarr = f'{CMAL_RUN}/test/model_epoch016/test_results.zarr'
-    ts, to, tm, tb, tl, td = gather(test_zarr)
-    print(f'test rows: {len(to)}')
+    ts, to, tm, tb, tl, t_issue, t_valid, basin_ids = gather(test_zarr)
+    print(f'test rows before the valid-date window mask: {len(to)}')
 
-    wy17 = td < np.datetime64('2017-10-01')
-    windows = {'WY2017': wy17, 'WY2023': ~wy17}
+    # Windows are assigned by VALID date; the lead overhang past each window end
+    # verifies inside the next training period and is dropped.
+    windows = {name: (t_valid >= np.datetime64(s)) & (t_valid <= np.datetime64(e))
+               for name, (s, e) in WINDOWS_WY.items()}
+    keep = np.zeros(len(to), dtype=bool)
+    for m in windows.values():
+        keep |= m
+    print(f'dropped {int((~keep).sum())} rows with valid_date outside both test '
+          f'water years (lead overhang into training targets)')
+    ts, to, tm = ts[keep], to[keep], tm[keep]
+    tb, tl = tb[keep], tl[keep]
+    t_issue, t_valid = t_issue[keep], t_valid[keep]
+    windows = {k: v[keep] for k, v in windows.items()}
+    print(f'test rows: {len(to)}')
     print({k: int(m.sum()) for k, m in windows.items()})
 
     # Composite: every row transformed with parameters fit on the OTHER window.
@@ -189,27 +229,55 @@ def main() -> None:
 
     variants = out
 
+    def dspan(m):
+        """issue/valid date span of a row subset, as an explicit bookkeeping stamp."""
+        return {
+            'issue_date_first': str(pd.Timestamp(t_issue[m].min()).date()),
+            'issue_date_last': str(pd.Timestamp(t_issue[m].max()).date()),
+            'valid_date_first': str(pd.Timestamp(t_valid[m].min()).date()),
+            'valid_date_last': str(pd.Timestamp(t_valid[m].max()).date()),
+        }
+
     rows = []
     ter = np.quantile(to, [2 / 3])
     for name, x in variants.items():
         for lead in sorted(np.unique(tl)):
             m = tl == lead
             rows.append({
-                'variant': name, 'lead': int(lead),
+                'variant': name, 'lead': int(lead), 'n': int(m.sum()),
                 'coverage90': coverage(x[m], to[m]),
                 'crps': float(np.mean(fair_crps(x[m], to[m]))),
+                **dspan(m),
             })
         hi = to > ter[0]
         lo_esc = float((to[hi] < np.percentile(x[hi], 5, axis=1)).mean())
         hi_esc = float((to[hi] > np.percentile(x[hi], 95, axis=1)).mean())
-        rows.append({'variant': name, 'lead': -1,
+        rows.append({'variant': name, 'lead': -1, 'n': int(hi.sum()),
                      'coverage90': coverage(x[hi], to[hi]),
                      'crps': float(np.mean(fair_crps(x[hi], to[hi]))),
+                     **dspan(hi),
                      'note': f'top-tercile days; esc_above={hi_esc:.3f}, '
                              f'esc_below={lo_esc:.3f}'})
     df = pd.DataFrame(rows)
     os.makedirs(OUT, exist_ok=True)
     df.to_csv(f'{OUT}/recalibration.csv', index=False)
+
+    # Long-form companion: one row per basin x lead x variant, each stamped with
+    # the issue- and valid-date span it covers (review action item, 2026-08-19).
+    brows = []
+    for name, x in variants.items():
+        for bi in sorted(np.unique(tb)):
+            for lead in sorted(np.unique(tl)):
+                m = (tb == bi) & (tl == lead)
+                if not m.any():
+                    continue
+                brows.append({
+                    'basin': basin_ids[bi], 'variant': name, 'lead': int(lead),
+                    'n': int(m.sum()), **dspan(m),
+                    'coverage90': coverage(x[m], to[m]),
+                    'crps': float(np.mean(fair_crps(x[m], to[m]))),
+                })
+    pd.DataFrame(brows).to_csv(f'{OUT}/recalibration_by_basin.csv', index=False)
 
     piv_c = df[df.lead >= 0].pivot(index='lead', columns='variant',
                                    values='coverage90')
@@ -240,11 +308,12 @@ def main() -> None:
     a2.set_ylim(0, None)
     fig.suptitle('Coverage and fair CRPS by lead, flood test years: raw '
                  'ensemble vs affine recalibration, each window scored with '
-                 'parameters fit on the other', fontsize=10.5, x=0.02,
-                 ha='left')
+                 'parameters fit on the other\n(scored at valid date = issue '
+                 'date + lead)', fontsize=10.5, x=0.02, ha='left')
     fig.tight_layout(rect=[0, 0, 1, 0.94])
     fig.savefig(f'{OUT}/recalibration.png', dpi=150, bbox_inches='tight')
-    print(f'\nwrote {OUT}/recalibration.csv and recalibration.png')
+    print(f'\nwrote {OUT}/recalibration.csv, recalibration_by_basin.csv '
+          f'and recalibration.png')
 
 
 if __name__ == '__main__':

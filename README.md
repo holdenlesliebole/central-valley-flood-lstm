@@ -1,19 +1,31 @@
-# Central Valley flood-forecasting LSTM
+# California streamflow LSTM: forecast value against the gauge
 
-California Sierra streamflow forecasting with Google Research's open
+Daily streamflow forecasting across 28 minimally regulated California basins
+(20 rain-classified, 8 snow) with Google Research's open
 [flood-forecasting framework](https://github.com/google-research/flood-forecasting)
-(the LSTM behind Flood Hub), trained and evaluated on a laptop across 28
-California basins and benchmarked against the NOAA National Water Model
-retrospective on held-out flood water years (WY2017, WY2023).
+(the same model family as Flood Hub), trained and evaluated on a laptop and
+scored on held-out flood water years (WY2017, WY2023) against the baselines an
+operator has in hand: lead-matched gauge persistence, damped persistence, and
+NOAA National Water Model retrospectives.
 
-The question this project actually answers is not "does the LSTM win" but
-**when can you trust an ML streamflow forecast** — test-period choice, gauge
-persistence as the binding baseline, peak-magnitude skill, ungauged transfer
-across hydrologic regimes, and probabilistic calibration.
+The question this project answers is when a deep-learning streamflow forecast
+beats the gauge reading the operator already has, and where its value stops:
+storm-stratified skill, peak-magnitude error, a held-out-basin failure,
+and probabilistic calibration before and after a cross-fitted affine
+correction.
+
+**2026-08-19 correction.** An adversarial review found that two multi-lead
+analyses paired forecasts with observations from the issue date rather than
+the valid date. The recalibration and lead-3 storm results were regenerated,
+a per-lead observation closure test was added
+(`scripts/test_valid_date_alignment.py`), and the split-boundary label overlap
+was quantified (`outputs/figures/split_leakage.csv`). Details in
+`docs/METHODS.md`.
 
 - **`docs/METHODS.md`** — methods, splits, results, reproducibility, and the traps
   hit along the way. Read it before running anything or quoting any number.
-- Writeup: *When can you trust an ML streamflow forecast?* (personal site).
+- Writeup: *When does a deep-learning streamflow forecast beat the gauge?*
+  (personal site).
 
 ## Layout
 

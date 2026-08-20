@@ -1,10 +1,15 @@
 """Study-area map: the 28 training basins, regime, and cohort membership.
 
 Spatial orientation for the writeup: where the basins sit relative to the
-Sierra Nevada and the Central Valley, which are snowmelt vs rain regimes
-(gauge color = Caravan frac_snow, the regime variable behind Findings 1, 3
-and 5), which five are the focus basins, and which six lack flood-window
-observations and are excluded from every cohort median.
+Sierra Nevada and the Central Valley, how each is classified by Caravan
+frac_snow (gauge color; rain-classified below 0.3), which five are the focus
+basins, and which six lack flood-window observations and are excluded from
+every cohort median.
+
+The census is 20 rain-classified and 8 snow-classified of 28, committed in
+outputs/figures/basin_regime_table.csv. The rain basins are dominated by
+North Coast systems plus six Central Coast streams, so do not describe this
+population as Sierra snowmelt (corrected 2026-08-19).
 
 California boundary: US Census cartographic boundary file, fetched once and
 cached at ~/data/geo/.
@@ -119,8 +124,8 @@ def main() -> None:
     ax.grid(color='#eceae6', lw=0.5)
     for s in ('top', 'right'):
         ax.spines[s].set_visible(False)
-    fig.suptitle('The 28 training basins: snowmelt Sierra headwaters plus '
-                 'rain-driven coastal ranges', fontsize=10.5, x=0.02, ha='left')
+    fig.suptitle('The 28 training basins: 20 rain-classified, 8 snow-classified '
+                 '(frac_snow < 0.3 rule)', fontsize=10.5, x=0.02, ha='left')
     fig.tight_layout(rect=[0, 0, 1, 0.97])
     fig.savefig(f'{OUT}/study_map.png', dpi=150, bbox_inches='tight')
     print(f'wrote {OUT}/study_map.png')
